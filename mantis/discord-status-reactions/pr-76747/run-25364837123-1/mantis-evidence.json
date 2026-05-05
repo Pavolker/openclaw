@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 1,
+  "id": "discord-status-reactions",
+  "title": "Mantis Discord Status Reactions QA",
+  "summary": "Mantis reran Discord status reactions against the known queued-only baseline and the candidate ref. The baseline reproduced the bug, while the candidate showed the expected queued -> thinking -> done reaction sequence.",
+  "scenario": "discord-status-reactions-tool-only",
+  "comparison": {
+    "baseline": {
+      "sha": "0bf06e953fdda290799fc9fb9244a8f67fdae593",
+      "expected": "queued-only",
+      "status": "fail",
+      "reproduced": true
+    },
+    "candidate": {
+      "sha": "f3d531439bc2d4bb9a48e0db1a6fa04ba177b798",
+      "expected": "queued -> thinking -> done",
+      "status": "pass",
+      "fixed": true
+    },
+    "pass": true
+  },
+  "artifacts": [
+    {
+      "kind": "timeline",
+      "lane": "baseline",
+      "label": "Baseline queued-only",
+      "path": "baseline/discord-status-reactions-tool-only-timeline.png",
+      "targetPath": "baseline.png",
+      "alt": "Baseline Discord status reaction timeline",
+      "width": 420
+    },
+    {
+      "kind": "timeline",
+      "lane": "candidate",
+      "label": "Candidate queued -> thinking -> done",
+      "path": "candidate/discord-status-reactions-tool-only-timeline.png",
+      "targetPath": "candidate.png",
+      "alt": "Candidate Discord status reaction timeline",
+      "width": 420
+    },
+    {
+      "kind": "desktopScreenshot",
+      "lane": "baseline",
+      "label": "Baseline desktop/VNC browser",
+      "path": "baseline/discord-status-reactions-tool-only-desktop.png",
+      "targetPath": "baseline-desktop.png",
+      "alt": "Baseline Mantis desktop browser screenshot",
+      "width": 420
+    },
+    {
+      "kind": "desktopScreenshot",
+      "lane": "candidate",
+      "label": "Candidate desktop/VNC browser",
+      "path": "candidate/discord-status-reactions-tool-only-desktop.png",
+      "targetPath": "candidate-desktop.png",
+      "alt": "Candidate Mantis desktop browser screenshot",
+      "width": 420
+    },
+    {
+      "kind": "motionPreview",
+      "lane": "baseline",
+      "label": "Baseline motion preview",
+      "path": "baseline/discord-status-reactions-tool-only-desktop-preview.gif",
+      "targetPath": "baseline-desktop-preview.gif",
+      "alt": "Animated baseline desktop preview",
+      "width": 420,
+      "required": false
+    },
+    {
+      "kind": "motionPreview",
+      "lane": "candidate",
+      "label": "Candidate motion preview",
+      "path": "candidate/discord-status-reactions-tool-only-desktop-preview.gif",
+      "targetPath": "candidate-desktop-preview.gif",
+      "alt": "Animated candidate desktop preview",
+      "width": 420,
+      "required": false
+    },
+    {
+      "kind": "motionClip",
+      "lane": "baseline",
+      "label": "Baseline change MP4",
+      "path": "baseline/discord-status-reactions-tool-only-desktop-change.mp4",
+      "targetPath": "baseline-desktop-change.mp4",
+      "required": false
+    },
+    {
+      "kind": "motionClip",
+      "lane": "candidate",
+      "label": "Candidate change MP4",
+      "path": "candidate/discord-status-reactions-tool-only-desktop-change.mp4",
+      "targetPath": "candidate-desktop-change.mp4",
+      "required": false
+    },
+    {
+      "kind": "fullVideo",
+      "lane": "baseline",
+      "label": "Baseline desktop MP4",
+      "path": "baseline/discord-status-reactions-tool-only-desktop.mp4",
+      "targetPath": "baseline-desktop.mp4"
+    },
+    {
+      "kind": "fullVideo",
+      "lane": "candidate",
+      "label": "Candidate desktop MP4",
+      "path": "candidate/discord-status-reactions-tool-only-desktop.mp4",
+      "targetPath": "candidate-desktop.mp4"
+    },
+    {
+      "kind": "metadata",
+      "lane": "baseline",
+      "label": "Baseline preview metadata",
+      "path": "baseline/discord-status-reactions-tool-only-desktop-preview.json",
+      "targetPath": "baseline-desktop-preview.json",
+      "required": false
+    },
+    {
+      "kind": "metadata",
+      "lane": "candidate",
+      "label": "Candidate preview metadata",
+      "path": "candidate/discord-status-reactions-tool-only-desktop-preview.json",
+      "targetPath": "candidate-desktop-preview.json",
+      "required": false
+    },
+    {
+      "kind": "metadata",
+      "lane": "run",
+      "label": "Comparison JSON",
+      "path": "comparison.json",
+      "targetPath": "comparison.json"
+    },
+    {
+      "kind": "report",
+      "lane": "run",
+      "label": "Mantis report",
+      "path": "mantis-report.md",
+      "targetPath": "mantis-report.md"
+    }
+  ]
+}
