@@ -1,20 +1,38 @@
-import { listChannelCatalogEntries } from "../../plugins/channel-catalog-registry.js";
+import {
+  listChannelCatalogEntries,
+  type PluginChannelCatalogEntry,
+} from "../../plugins/channel-catalog-registry.js";
 import { resolveBundledChannelRootScope } from "./bundled-root.js";
 
+const bundledChannelCatalogEntriesByRoot = new Map<string, readonly PluginChannelCatalogEntry[]>();
+
+function listBundledChannelCatalogEntriesForRoot(
+  packageRoot: string,
+  env: NodeJS.ProcessEnv,
+): readonly PluginChannelCatalogEntry[] {
+  const cached = bundledChannelCatalogEntriesByRoot.get(packageRoot);
+  if (cached) {
+    return cached;
+  }
+  const entries = listChannelCatalogEntries({ origin: "bundled", env });
+  bundledChannelCatalogEntriesByRoot.set(packageRoot, entries);
+  return entries;
+}
+
 export function listBundledChannelPluginIdsForRoot(
-  _packageRoot: string,
+  packageRoot: string,
   env: NodeJS.ProcessEnv = process.env,
 ): string[] {
-  return listChannelCatalogEntries({ origin: "bundled", env })
+  return listBundledChannelCatalogEntriesForRoot(packageRoot, env)
     .map((entry) => entry.pluginId)
     .toSorted((left, right) => left.localeCompare(right));
 }
 
 export function listBundledChannelIdsForRoot(
-  _packageRoot: string,
+  packageRoot: string,
   env: NodeJS.ProcessEnv = process.env,
 ): string[] {
-  return listChannelCatalogEntries({ origin: "bundled", env })
+  return listBundledChannelCatalogEntriesForRoot(packageRoot, env)
     .map((entry) => entry.channel.id)
     .filter((channelId): channelId is string => Boolean(channelId))
     .toSorted((left, right) => left.localeCompare(right));

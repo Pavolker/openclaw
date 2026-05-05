@@ -14,6 +14,7 @@ let loadOpenClawPluginsMock: ReturnType<typeof vi.fn>;
 let setActivePluginRegistry: RuntimeModule["setActivePluginRegistry"];
 let resetPluginRuntimeStateForTest: RuntimeModule["resetPluginRuntimeStateForTest"];
 let resolvePluginWebFetchProviders: WebFetchProvidersRuntimeModule["resolvePluginWebFetchProviders"];
+let resolveRuntimeWebFetchProviders: WebFetchProvidersRuntimeModule["resolveRuntimeWebFetchProviders"];
 
 const DEFAULT_WORKSPACE = "/tmp/workspace";
 
@@ -112,7 +113,8 @@ describe("resolvePluginWebFetchProviders", () => {
     manifestRegistryModule = await import("./manifest-registry.js");
     webFetchProvidersSharedModule = await import("./web-fetch-providers.shared.js");
     ({ resetPluginRuntimeStateForTest, setActivePluginRegistry } = await import("./runtime.js"));
-    ({ resolvePluginWebFetchProviders } = await import("./web-fetch-providers.runtime.js"));
+    ({ resolvePluginWebFetchProviders, resolveRuntimeWebFetchProviders } =
+      await import("./web-fetch-providers.runtime.js"));
   });
 
   beforeEach(() => {
@@ -151,6 +153,20 @@ describe("resolvePluginWebFetchProviders", () => {
     const providers = resolvePluginWebFetchProviders({
       config: createFirecrawlAllowConfig(),
       mode: "setup",
+    });
+
+    expect(providers.map((provider) => `${provider.pluginId}:${provider.id}`)).toEqual([
+      "firecrawl:firecrawl",
+    ]);
+    expect(loadOpenClawPluginsMock).not.toHaveBeenCalled();
+  });
+
+  it("uses bundled runtime web-fetch public artifacts before full plugin loads", () => {
+    const providers = resolveRuntimeWebFetchProviders({
+      config: createFirecrawlAllowConfig(),
+      bundledAllowlistCompat: true,
+      workspaceDir: DEFAULT_WORKSPACE,
+      env: createWebFetchEnv(),
     });
 
     expect(providers.map((provider) => `${provider.pluginId}:${provider.id}`)).toEqual([

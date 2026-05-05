@@ -13,6 +13,7 @@ import { loadOpenClawPlugins } from "./loader.js";
 import { loadPluginManifestRegistry, type PluginManifestRegistry } from "./manifest-registry.js";
 
 const log = createSubsystemLogger("plugins/agent-tool-result-middleware");
+const PREPARED_TOOL_RESULT_MIDDLEWARE_RUNTIME_SURFACES = ["gateway-runtime", "channel"] as const;
 
 async function resolveRuntimeConfig(): Promise<OpenClawConfig> {
   const { getRuntimeConfig } = await import("../config/config.js");
@@ -74,6 +75,14 @@ export async function loadAgentToolResultMiddlewaresForRuntime(params: {
         env,
         requiredPluginIds: pluginIds,
       }) ??
+      PREPARED_TOOL_RESULT_MIDDLEWARE_RUNTIME_SURFACES.map((surface) =>
+        getLoadedRuntimePluginRegistry({
+          workspaceDir: params.workspaceDir,
+          env,
+          requiredPluginIds: pluginIds,
+          surface,
+        }),
+      ).find((registry) => registry) ??
       loadOpenClawPlugins({
         config,
         workspaceDir: params.workspaceDir,
