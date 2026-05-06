@@ -5,7 +5,7 @@ import path from "node:path";
 import { getLatestSubagentRunByChildSessionKey } from "../agents/subagent-registry.js";
 import { resolveStateDir } from "../config/paths.js";
 import { readLocalFileSafely } from "../infra/fs-safe.js";
-import { tryReadJson, writeJson } from "../infra/json-files.js";
+import { tryReadJson } from "../infra/json-files.js";
 import { safeFileURLToPath } from "../infra/local-file-access.js";
 import {
   getImageMetadata,
@@ -406,8 +406,7 @@ async function writeManagedImageRecord(record: ManagedImageRecord, stateDir = re
     managedImageRecordDbOptions(stateDir),
   );
   const recordPath = resolveOutgoingRecordPath(record.attachmentId, stateDir);
-  // Compatibility export for older tools and downgrade/debug workflows.
-  await writeJson(recordPath, record, { trailingNewline: true });
+  await fs.rm(recordPath, { force: true });
 }
 
 async function deleteManagedImageRecordArtifacts(
@@ -512,6 +511,7 @@ async function listManagedImageRecords(stateDir: string): Promise<ListedManagedI
         managedImageRecordDbOptions(stateDir),
       );
     }
+    await fs.rm(recordPath, { force: true }).catch(() => {});
   }
 
   return {
@@ -611,6 +611,7 @@ async function readManagedImageRecord(
         record,
         managedImageRecordDbOptions(stateDir),
       );
+      await fs.rm(resolveOutgoingRecordPath(attachmentId, stateDir), { force: true });
     }
     return record;
   } catch {

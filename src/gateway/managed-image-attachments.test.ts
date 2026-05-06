@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPinnedLookup } from "../infra/net/ssrf.js";
 import { setMediaStoreNetworkDepsForTest } from "../media/store.js";
 import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
+import { readOpenClawStateKvJson } from "../state/openclaw-state-kv.js";
 
 const authorizeGatewayHttpRequestOrReplyMock = vi.fn();
 const resolveOpenAiCompatibleHttpOperatorScopesMock = vi.fn();
@@ -109,6 +110,19 @@ async function createFixture(
     "utf-8",
   );
   return { attachmentId, sessionKey, originalPath };
+}
+
+function readManagedImageRecordFromSqlite<T = Record<string, unknown>>(
+  stateDir: string,
+  attachmentId: string,
+): T {
+  const value = readOpenClawStateKvJson("managed_outgoing_image_records", attachmentId, {
+    env: { ...process.env, OPENCLAW_STATE_DIR: stateDir },
+  }) as T | undefined;
+  if (!value) {
+    throw new Error(`Expected managed image record ${attachmentId}`);
+  }
+  return value;
 }
 
 async function requestManagedImage(params: {
@@ -237,9 +251,12 @@ describe("handleManagedOutgoingImageHttpRequest", () => {
     expect(result.headers["content-type"]).toBe("image/png");
     expect(result.headers["content-disposition"]).toContain("inline");
     expect(result.body.toString("utf-8")).toBe("original-image");
+    await expect(
+      fs.access(path.join(stateDir, "media", "outgoing", "records", `${attachmentId}.json`)),
+    ).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("serves records from SQLite when the compatibility JSON record is missing", async () => {
+  it("serves records from SQLite without legacy JSON", async () => {
     const blocks = await createManagedOutgoingImageBlocks({
       sessionKey: "agent:main:main",
       mediaUrls: [`data:image/png;base64,${TINY_PNG_BASE64}`],
@@ -249,9 +266,9 @@ describe("handleManagedOutgoingImageHttpRequest", () => {
     const pathName = String(blocks[0]?.url);
     const attachmentId = pathName.split("/").at(-2) ?? "";
     expect(attachmentId).toBeTruthy();
-    await fs.rm(path.join(stateDir, "media", "outgoing", "records", `${attachmentId}.json`), {
-      force: true,
-    });
+    await expect(
+      fs.access(path.join(stateDir, "media", "outgoing", "records", `${attachmentId}.json`)),
+    ).rejects.toMatchObject({ code: "ENOENT" });
 
     const { result } = await requestManagedImage({
       stateDir,
@@ -412,11 +429,10 @@ describe("createManagedOutgoingImageBlocks", () => {
     expect(blocks[0]?.url).toBe(blocks[0]?.openUrl);
     expect(String(blocks[0]?.url)).toMatch(/\/full$/);
 
-    const recordsDir = path.join(stateDir, "media", "outgoing", "records");
-    const [recordName] = await fs.readdir(recordsDir);
-    const record = JSON.parse(await fs.readFile(path.join(recordsDir, recordName), "utf-8")) as {
+    const attachmentId = String(blocks[0]?.url).split("/").at(-2) ?? "";
+    const record = readManagedImageRecordFromSqlite<{
       original: { path: string };
-    };
+    }>(stateDir, attachmentId);
     expect(record.original.path).toContain(
       `${path.sep}media${path.sep}outgoing${path.sep}originals${path.sep}`,
     );
@@ -466,12 +482,9 @@ describe("createManagedOutgoingImageBlocks", () => {
 
       const attachmentId = String(blocks[0]?.url).split("/").at(-2);
       expect(attachmentId).toBeTruthy();
-      const record = JSON.parse(
-        await fs.readFile(
-          path.join(stateDir, "media", "outgoing", "records", `${attachmentId}.json`),
-          "utf-8",
-        ),
-      ) as { original: { filename: string; path: string } };
+      const record = readManagedImageRecordFromSqlite<{
+        original: { filename: string; path: string };
+      }>(stateDir, String(attachmentId));
       expect(record.original.filename).toMatch(/\.png$/);
       expect(record.original.path).not.toBe(sourcePath);
       expect(record.original.path).toContain(path.join(stateDir, "media", "outgoing", "originals"));
@@ -526,12 +539,10 @@ describe("createManagedOutgoingImageBlocks", () => {
 
       const attachmentId = String(blocks[0]?.url).split("/").at(-2);
       expect(attachmentId).toBeTruthy();
-      const record = JSON.parse(
-        await fs.readFile(
-          path.join(stateDir, "media", "outgoing", "records", `${attachmentId}.json`),
-          "utf-8",
-        ),
-      ) as { original: { path: string } };
+      const record = readManagedImageRecordFromSqlite<{ original: { path: string } }>(
+        stateDir,
+        String(attachmentId),
+      );
       expect(record.original.path).toContain(path.join(stateDir, "media", "outgoing", "originals"));
       expect(JSON.stringify(record)).not.toContain("127.0.0.1");
       expect(JSON.stringify(record)).not.toContain("sig=secret");
@@ -570,12 +581,10 @@ describe("createManagedOutgoingImageBlocks", () => {
       const attachmentId = String(blocks[0]?.url).split("/").at(-2);
       expect(attachmentId).toBeTruthy();
 
-      const record = JSON.parse(
-        await fs.readFile(
-          path.join(stateDir, "media", "outgoing", "records", `${attachmentId}.json`),
-          "utf-8",
-        ),
-      ) as { original: { path: string } };
+      const record = readManagedImageRecordFromSqlite<{ original: { path: string } }>(
+        stateDir,
+        String(attachmentId),
+      );
 
       expect(record.original.path).toContain(path.join(stateDir, "media", "outgoing", "originals"));
       expect(record.original.path).not.toContain(externalConfigDir);
@@ -873,13 +882,12 @@ describe("attachManagedOutgoingImagesToMessage", () => {
       stateDir,
     });
 
-    const recordsDir = path.join(stateDir, "media", "outgoing", "records");
-    const [recordName] = await fs.readdir(recordsDir);
-    const record = JSON.parse(await fs.readFile(path.join(recordsDir, recordName), "utf-8")) as {
+    const attachmentId = String(blocks[0]?.url).split("/").at(-2) ?? "";
+    const record = readManagedImageRecordFromSqlite<{
       messageId: string | null;
       retentionClass?: string;
       updatedAt?: string;
-    };
+    }>(stateDir, attachmentId);
     expect(record.messageId).toBe("msg-committed");
     expect(record.retentionClass).toBe("history");
     expect(typeof record.updatedAt).toBe("string");
