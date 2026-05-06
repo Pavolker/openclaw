@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import fs from "node:fs";
 import path from "node:path";
 import { resolveAgentRuntimeMetadata } from "../../agents/agent-runtime-metadata.js";
 import {
@@ -28,6 +27,7 @@ import {
 } from "../../config/sessions.js";
 import {
   appendSqliteSessionTranscriptEvent,
+  deleteSqliteSessionTranscript,
   hasSqliteSessionTranscriptEvents,
   replaceSqliteSessionTranscriptEvents,
 } from "../../config/sessions/transcript-store.sqlite.js";
@@ -86,7 +86,6 @@ import {
 } from "../session-compaction-checkpoints.js";
 import { reactivateCompletedSubagentSession } from "../session-subagent-reactivation.js";
 import {
-  archiveFileOnDisk,
   buildGatewaySessionRow,
   listSessionsFromStoreAsync,
   loadCombinedSessionStoreForGateway,
@@ -618,7 +617,12 @@ async function handleSessionSend(params: {
   }
 
   const messageSeq =
-    (await readSessionMessageCountAsync(entry.sessionId, storePath, entry.sessionFile)) + 1;
+    (await readSessionMessageCountAsync(
+      entry.sessionId,
+      storePath,
+      entry.sessionFile,
+      resolveAgentIdFromSessionKey(canonicalKey),
+    )) + 1;
   let sendAcked = false;
   let sendPayload: unknown;
   let sendCached = false;
@@ -1148,6 +1152,7 @@ export const sessionsHandlers: GatewayRequestHandlers = {
           createdEntry.sessionId,
           target.storePath,
           createdEntry.sessionFile,
+          target.agentId,
         )) + 1
       : undefined;
 
@@ -1265,7 +1270,7 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       return;
     }
     const checkpoint = getSessionCompactionCheckpoint({ entry, checkpointId });
-    if (!checkpoint?.preCompaction.sessionFile) {
+    if (!checkpoint?.preCompaction.sessionId) {
       respond(
         false,
         undefined,
@@ -1274,8 +1279,10 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       return;
     }
     const branchedSession = await forkCompactionCheckpointTranscriptAsync({
+      agentId: target.agentId,
       sourceFile: checkpoint.preCompaction.sessionFile,
-      sessionDir: path.dirname(checkpoint.preCompaction.sessionFile),
+      sourceSessionId: checkpoint.preCompaction.sessionId,
+      sessionDir: entry.sessionFile ? path.dirname(entry.sessionFile) : undefined,
     });
     if (!branchedSession?.sessionFile) {
       respond(
@@ -1364,7 +1371,7 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       return;
     }
     const checkpoint = getSessionCompactionCheckpoint({ entry, checkpointId });
-    if (!checkpoint?.preCompaction.sessionFile) {
+    if (!checkpoint?.preCompaction.sessionId) {
       respond(
         false,
         undefined,
@@ -1386,9 +1393,12 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       return;
     }
 
+    const target = resolveGatewaySessionStoreTarget({ cfg: loaded.cfg, key: canonicalKey });
     const restoredSession = await forkCompactionCheckpointTranscriptAsync({
+      agentId: target.agentId,
       sourceFile: checkpoint.preCompaction.sessionFile,
-      sessionDir: path.dirname(checkpoint.preCompaction.sessionFile),
+      sourceSessionId: checkpoint.preCompaction.sessionId,
+      sessionDir: entry.sessionFile ? path.dirname(entry.sessionFile) : undefined,
     });
     if (!restoredSession?.sessionFile) {
       respond(
@@ -1758,7 +1768,6 @@ export const sessionsHandlers: GatewayRequestHandlers = {
 
     const deleteTranscript = typeof p.deleteTranscript === "boolean" ? p.deleteTranscript : true;
     const {
-      archiveSessionTranscriptsForSessionDetailed,
       cleanupSessionBeforeMutation,
       emitGatewaySessionEndPluginHook,
       emitSessionUnboundLifecycleEvent,
@@ -1791,17 +1800,12 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       return hadEntry;
     });
 
-    const archivedTranscripts =
-      deleted && deleteTranscript
-        ? archiveSessionTranscriptsForSessionDetailed({
-            sessionId,
-            storePath,
-            sessionFile: entry?.sessionFile,
-            agentId: target.agentId,
-            reason: "deleted",
-          })
-        : [];
-    const archived = archivedTranscripts.map((entry) => entry.archivedPath);
+    if (deleted && deleteTranscript && sessionId) {
+      deleteSqliteSessionTranscript({
+        agentId: target.agentId,
+        sessionId,
+      });
+    }
     if (deleted) {
       emitGatewaySessionEndPluginHook({
         cfg,
@@ -1811,7 +1815,6 @@ export const sessionsHandlers: GatewayRequestHandlers = {
         sessionFile: entry?.sessionFile,
         agentId: target.agentId,
         reason: "deleted",
-        archivedTranscripts,
       });
       const emitLifecycleHooks = p.emitLifecycleHooks !== false;
       await emitSessionUnboundLifecycleEvent({
@@ -1821,7 +1824,7 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       });
     }
 
-    respond(true, { ok: true, key: target.canonicalKey, deleted, archived }, undefined);
+    respond(true, { ok: true, key: target.canonicalKey, deleted, archived: [] }, undefined);
     if (deleted) {
       emitSessionsChanged(context, {
         sessionKey: target.canonicalKey,
@@ -1905,13 +1908,19 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       return;
     }
 
-    const filePath = resolveSessionTranscriptCandidates(
+    const transcriptPath = resolveSessionTranscriptCandidates(
       sessionId,
       storePath,
       entry?.sessionFile,
       target.agentId,
-    ).find((candidate) => fs.existsSync(candidate));
-    if (!filePath) {
+    )[0];
+    if (
+      !transcriptPath ||
+      !hasSqliteSessionTranscriptEvents({
+        agentId: target.agentId,
+        sessionId,
+      })
+    ) {
       respond(
         true,
         {
@@ -1948,7 +1957,7 @@ export const sessionsHandlers: GatewayRequestHandlers = {
         sessionId,
         sessionKey: target.canonicalKey,
         allowGatewaySubagentBinding: true,
-        sessionFile: filePath,
+        sessionFile: transcriptPath,
         workspaceDir,
         config: cfg,
         provider: resolvedModel.provider,
@@ -2038,11 +2047,10 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       return;
     }
 
-    const archived = fs.existsSync(filePath) ? archiveFileOnDisk(filePath, "bak") : undefined;
     replaceSqliteSessionTranscriptEvents({
       agentId: target.agentId,
       sessionId,
-      transcriptPath: filePath,
+      transcriptPath,
       events: lines.map((line) => JSON.parse(line) as unknown),
     });
 
@@ -2065,7 +2073,6 @@ export const sessionsHandlers: GatewayRequestHandlers = {
         ok: true,
         key: target.canonicalKey,
         compacted: true,
-        archived,
         kept: lines.length,
       },
       undefined,

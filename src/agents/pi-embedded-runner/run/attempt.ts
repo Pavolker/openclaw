@@ -4,6 +4,7 @@ import path from "node:path";
 import { isAcpRuntimeSpawnAvailable } from "../../../acp/runtime/availability.js";
 import { filterHeartbeatPairs } from "../../../auto-reply/heartbeat-filter.js";
 import { getRuntimeConfig } from "../../../config/config.js";
+import { hasSqliteSessionTranscriptEvents } from "../../../config/sessions/transcript-store.sqlite.js";
 import type { AssembleResult } from "../../../context-engine/types.js";
 import { emitTrustedDiagnosticEvent } from "../../../infra/diagnostic-events.js";
 import {
@@ -203,7 +204,6 @@ import {
   updateActiveEmbeddedRunSnapshot,
 } from "../runs.js";
 import { buildEmbeddedSandboxInfo } from "../sandbox-info.js";
-import { prewarmSessionFile, trackSessionManagerAccess } from "../session-manager-cache.js";
 import { resolveEmbeddedRunSkillEntries } from "../skills-runtime.js";
 import {
   describeEmbeddedAgentStreamStrategy,
@@ -1419,10 +1419,10 @@ export async function runEmbeddedAttempt(
         debug: (message) => log.debug(message),
         warn: (message) => log.warn(message),
       });
-      const hadSessionFile = await fs
-        .stat(params.sessionFile)
-        .then(() => true)
-        .catch(() => false);
+      const hadSessionFile = hasSqliteSessionTranscriptEvents({
+        agentId: sessionAgentId,
+        sessionId: params.sessionId,
+      });
 
       const transcriptPolicy = resolveAttemptTranscriptPolicy({
         runtimePlan: params.runtimePlan,
@@ -1433,7 +1433,6 @@ export async function runEmbeddedAttempt(
         env: process.env,
       });
 
-      await prewarmSessionFile(params.sessionFile);
       sessionManager = guardSessionManager(
         openTranscriptSessionManager({
           sessionFile: params.sessionFile,
@@ -1460,8 +1459,6 @@ export async function runEmbeddedAttempt(
           },
         },
       );
-      trackSessionManagerAccess(params.sessionFile);
-
       await runAttemptContextEngineBootstrap({
         hadSessionFile,
         contextEngine: activeContextEngine,
