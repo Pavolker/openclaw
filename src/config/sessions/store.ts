@@ -10,20 +10,11 @@ import {
   normalizeSessionDeliveryFields,
 } from "../../utils/delivery-context.shared.js";
 import type { DeliveryContext } from "../../utils/delivery-context.types.js";
-import { getFileStatSnapshot } from "../cache-utils.js";
 import { deriveSessionMetaPatch } from "./metadata.js";
 import {
   saveSqliteSessionStore,
   resolveSqliteSessionStoreOptionsForPath,
 } from "./store-backend.sqlite.js";
-import {
-  dropSessionStoreObjectCache,
-  getSerializedSessionStore,
-  isSessionStoreCacheEnabled,
-  setSerializedSessionStore,
-  takeMutableSessionStoreCache,
-  writeSessionStoreCache,
-} from "./store-cache.js";
 import { normalizeStoreSessionKey, resolveSessionStoreEntry } from "./store-entry.js";
 import { loadSessionStore } from "./store-load.js";
 import { normalizeSessionStore } from "./store-normalize.js";
@@ -84,38 +75,7 @@ type SaveSessionStoreOptions = {
   allowDropAcpMetaSessionKeys?: string[];
 };
 
-function updateSessionStoreWriteCaches(params: {
-  storePath: string;
-  store: Record<string, SessionEntry>;
-  serialized: string;
-}): void {
-  const fileStat = getFileStatSnapshot(params.storePath);
-  setSerializedSessionStore(params.storePath, params.serialized);
-  if (!isSessionStoreCacheEnabled()) {
-    dropSessionStoreObjectCache(params.storePath);
-    return;
-  }
-  writeSessionStoreCache({
-    storePath: params.storePath,
-    store: params.store,
-    mtimeMs: fileStat?.mtimeMs,
-    sizeBytes: fileStat?.sizeBytes,
-    serialized: params.serialized,
-  });
-}
-
 function loadMutableSessionStoreForWriter(storePath: string): Record<string, SessionEntry> {
-  if (isSessionStoreCacheEnabled()) {
-    const currentFileStat = getFileStatSnapshot(storePath);
-    const cached = takeMutableSessionStoreCache({
-      storePath,
-      mtimeMs: currentFileStat?.mtimeMs,
-      sizeBytes: currentFileStat?.sizeBytes,
-    });
-    if (cached) {
-      return cached;
-    }
-  }
   return loadSessionStore(storePath, { skipCache: true, clone: false });
 }
 
@@ -180,29 +140,22 @@ function preserveExistingAcpMetadata(params: {
 async function saveSessionStoreUnlocked(
   storePath: string,
   store: Record<string, SessionEntry>,
-  _opts?: SaveSessionStoreOptions,
 ): Promise<void> {
   normalizeSessionStore(store);
 
   await fs.promises.mkdir(path.dirname(storePath), { recursive: true });
-  const json = JSON.stringify(store, null, 2);
   const sqliteOptions = resolveSqliteSessionStoreOptionsForPath(storePath);
   if (sqliteOptions) {
     saveSqliteSessionStore(sqliteOptions, store);
-    dropSessionStoreObjectCache(storePath);
     return;
   }
 
-  if (getSerializedSessionStore(storePath) === json) {
-    updateSessionStoreWriteCaches({ storePath, store, serialized: json });
-    return;
-  }
-
+  const json = JSON.stringify(store, null, 2);
   // Windows: keep retry semantics because rename can fail while readers hold locks.
   if (process.platform === "win32") {
     for (let i = 0; i < 5; i++) {
       try {
-        await writeSessionStoreAtomic({ storePath, store, serialized: json });
+        await writeSessionStoreAtomic({ storePath, serialized: json });
         return;
       } catch (err) {
         const code = getErrorCode(err);
@@ -222,7 +175,7 @@ async function saveSessionStoreUnlocked(
   }
 
   try {
-    await writeSessionStoreAtomic({ storePath, store, serialized: json });
+    await writeSessionStoreAtomic({ storePath, serialized: json });
   } catch (err) {
     const code = getErrorCode(err);
 
@@ -230,7 +183,7 @@ async function saveSessionStoreUnlocked(
       // In tests the temp session-store directory may be deleted while writes are in-flight.
       // Best-effort: try a direct write (recreating the parent dir), otherwise ignore.
       try {
-        await writeSessionStoreAtomic({ storePath, store, serialized: json });
+        await writeSessionStoreAtomic({ storePath, serialized: json });
       } catch (err2) {
         const code2 = getErrorCode(err2);
         if (code2 === "ENOENT") {
@@ -248,10 +201,10 @@ async function saveSessionStoreUnlocked(
 export async function saveSessionStore(
   storePath: string,
   store: Record<string, SessionEntry>,
-  opts?: SaveSessionStoreOptions,
+  _opts?: SaveSessionStoreOptions,
 ): Promise<void> {
   await runExclusiveSessionStoreWrite(storePath, async () => {
-    await saveSessionStoreUnlocked(storePath, store, opts);
+    await saveSessionStoreUnlocked(storePath, store);
   });
 }
 
@@ -269,7 +222,7 @@ export async function updateSessionStore<T>(
       nextStore: store,
       allowDropSessionKeys: opts?.allowDropAcpMetaSessionKeys,
     });
-    await saveSessionStoreUnlocked(storePath, store, opts);
+    await saveSessionStoreUnlocked(storePath, store);
     return result;
   });
 }
@@ -310,15 +263,9 @@ export async function archiveRemovedSessionTranscripts(params: {
 
 async function writeSessionStoreAtomic(params: {
   storePath: string;
-  store: Record<string, SessionEntry>;
   serialized: string;
 }): Promise<void> {
-  await writeTextAtomic(params.storePath, params.serialized, { durable: false, mode: 0o600 });
-  updateSessionStoreWriteCaches({
-    storePath: params.storePath,
-    store: params.store,
-    serialized: params.serialized,
-  });
+  await writeTextAtomic(params.storePath, params.serialized, { mode: 0o600 });
 }
 
 async function persistResolvedSessionEntry(params: {
