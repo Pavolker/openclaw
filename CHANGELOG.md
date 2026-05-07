@@ -152,6 +152,7 @@ Docs: https://docs.openclaw.ai
 
 ### Fixes
 
+- Discord/Gateway: preserve username target resolution for Discord outbound sends and rotate generated transcript paths when gateway sessions reset.
 - Docs/Docker: document a local Compose override for Docker Desktop DNS failures in the shared-network `openclaw-cli` sidecar, keeping the default compose setup hardened while unblocking `openclaw plugins install` when users opt in. Fixes #79018. Thanks @Jason-Vaughan.
 - Compute plugin callback authorization dynamically [AI]. (#78866) Thanks @pgondhi987.
 - fix(active-memory): require admin scope for global toggles [AI]. (#78863) Thanks @pgondhi987.
