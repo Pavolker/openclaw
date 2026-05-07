@@ -27,10 +27,6 @@ import { isOpenAIProvider, resolveOpenAIRuntimeProviderForPi } from "../openai-c
 import { normalizeEmbeddedAgentRuntime } from "../pi-embedded-runner/runtime.js";
 import { runEmbeddedPiAgent, type EmbeddedPiRunResult } from "../pi-embedded.js";
 import { buildAgentRuntimeAuthPlan } from "../runtime-plan/auth.js";
-import {
-  acquireSessionWriteLock,
-  resolveSessionWriteLockAcquireTimeoutMs,
-} from "../session-write-lock.js";
 import { buildWorkspaceSkillSnapshot } from "../skills.js";
 import { buildUsageWithNoCost } from "../stream-message-shared.js";
 import {
@@ -206,13 +202,35 @@ async function persistTextTurnTranscript(
     agentId: params.sessionAgentId,
     threadId: params.threadId,
   });
-  const lock = await acquireSessionWriteLock({
-    sessionFile,
-    timeoutMs: resolveSessionWriteLockAcquireTimeoutMs(params.config),
-    allowReentrant: true,
-  });
-  try {
-    if (promptText) {
+  if (promptText) {
+    await appendSessionTranscriptMessage({
+      transcriptPath: sessionFile,
+      agentId: params.sessionAgentId,
+      sessionId: params.sessionId,
+      cwd: params.sessionCwd,
+      config: params.config,
+      message: {
+        role: "user",
+        content: promptText,
+        timestamp: Date.now(),
+      },
+    });
+  }
+
+  if (replyText) {
+    let appendAssistant = true;
+    if (params.embeddedAssistantGapFill) {
+      const latest = await readTailAssistantTextFromSessionTranscript(sessionFile, {
+        agentId: params.sessionAgentId,
+        sessionId: params.sessionId,
+      });
+      const normalizedReply = normalizeTranscriptMirrorText(replyText);
+      const normalizedLatest = latest?.text ? normalizeTranscriptMirrorText(latest.text) : "";
+      if (normalizedLatest && normalizedLatest === normalizedReply) {
+        appendAssistant = false;
+      }
+    }
+    if (appendAssistant) {
       await appendSessionTranscriptMessage({
         transcriptPath: sessionFile,
         agentId: params.sessionAgentId,
@@ -220,48 +238,17 @@ async function persistTextTurnTranscript(
         cwd: params.sessionCwd,
         config: params.config,
         message: {
-          role: "user",
-          content: promptText,
+          role: "assistant",
+          content: [{ type: "text", text: replyText }],
+          api: params.assistant.api,
+          provider: params.assistant.provider,
+          model: params.assistant.model,
+          usage: resolveTranscriptUsage(params.assistant.usage),
+          stopReason: "stop",
           timestamp: Date.now(),
         },
       });
     }
-
-    if (replyText) {
-      let appendAssistant = true;
-      if (params.embeddedAssistantGapFill) {
-        const latest = await readTailAssistantTextFromSessionTranscript(sessionFile, {
-          agentId: params.sessionAgentId,
-          sessionId: params.sessionId,
-        });
-        const normalizedReply = normalizeTranscriptMirrorText(replyText);
-        const normalizedLatest = latest?.text ? normalizeTranscriptMirrorText(latest.text) : "";
-        if (normalizedLatest && normalizedLatest === normalizedReply) {
-          appendAssistant = false;
-        }
-      }
-      if (appendAssistant) {
-        await appendSessionTranscriptMessage({
-          transcriptPath: sessionFile,
-          agentId: params.sessionAgentId,
-          sessionId: params.sessionId,
-          cwd: params.sessionCwd,
-          config: params.config,
-          message: {
-            role: "assistant",
-            content: [{ type: "text", text: replyText }],
-            api: params.assistant.api,
-            provider: params.assistant.provider,
-            model: params.assistant.model,
-            usage: resolveTranscriptUsage(params.assistant.usage),
-            stopReason: "stop",
-            timestamp: Date.now(),
-          },
-        });
-      }
-    }
-  } finally {
-    await lock.release();
   }
 
   emitSessionTranscriptUpdate({ sessionFile, sessionKey: params.sessionKey });
