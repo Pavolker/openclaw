@@ -172,6 +172,32 @@ describe("handleCommands reset hooks", () => {
     }
   });
 
+  it("allows owner-authorized Telegram /new even when command authorization is absent", async () => {
+    const params = buildResetParams(
+      "/new",
+      {
+        commands: { text: true, ownerAllowFrom: ["telegram:123"] },
+        channels: { telegram: { allowFrom: ["123"] } },
+      } as OpenClawConfig,
+      {
+        Provider: "telegram",
+        Surface: "telegram",
+        CommandSource: "native",
+        CommandAuthorized: false,
+        SenderId: "123",
+        From: "telegram:123",
+        To: "slash:123",
+      },
+    );
+
+    const result = await maybeHandleResetCommand(params);
+
+    expect(result).toBeNull();
+    expect(triggerInternalHookMock).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "command", action: "new" }),
+    );
+  });
+
   it("uses gateway session reset for bound ACP sessions", async () => {
     resetMocks.resolveBoundAcpThreadSessionKey.mockReturnValue(
       "agent:claude:acp:binding:discord:default:9373ab192b2317f4",
