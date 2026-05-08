@@ -52,6 +52,7 @@ describe("resolveChannelSetupWizardAdapterForPlugin", () => {
         prompter: {} as never,
         options: {},
         accountOverrides: { demo: "default" },
+        forceAllowFrom: false,
         shouldPromptAccountIds: false,
       }),
     ).resolves.toMatchObject({

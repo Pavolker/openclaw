@@ -4,6 +4,17 @@ import {
   resolveWhatsAppGroupSystemPrompt,
 } from "./system-prompt.js";
 
+type PromptEntries = Record<string, { systemPrompt?: string | null }>;
+type PromptAccountConfig = {
+  direct?: PromptEntries;
+  groups?: PromptEntries;
+};
+type PromptParams = {
+  accountConfig?: PromptAccountConfig | null;
+  groupId?: string | null;
+  peerId?: string | null;
+};
+
 const promptSurfaceCases = [
   {
     name: "group",
@@ -25,9 +36,9 @@ const promptSurfaceCases = [
 
 function createParams(
   surface: (typeof promptSurfaceCases)[number],
-  accountConfig?: unknown,
+  accountConfig?: PromptAccountConfig | null,
   targetId: string | null | undefined = surface.targetId,
-) {
+): PromptParams {
   return {
     [surface.targetKey]: targetId,
     accountConfig,
@@ -36,8 +47,8 @@ function createParams(
 
 function createAccountConfig(
   surface: (typeof promptSurfaceCases)[number],
-  entries: Record<string, unknown>,
-) {
+  entries: PromptEntries,
+): PromptAccountConfig {
   return { [surface.collectionKey]: entries };
 }
 

@@ -67,13 +67,21 @@ function unifiedDistGraph(): TsdownConfigEntry | undefined {
   );
 }
 
+function requireUnifiedDistGraph(): TsdownConfigEntry {
+  const config = unifiedDistGraph();
+  if (!config) {
+    throw new Error("expected unified dist graph");
+  }
+  return config;
+}
+
 function readGatewayRunLoopSource(): string {
   return readFileSync(new URL("../cli/gateway-cli/run-loop.ts", import.meta.url), "utf8");
 }
 
 describe("tsdown config", () => {
   it("keeps core, plugin runtime, plugin-sdk, bundled root plugins, and bundled hooks in one dist graph", () => {
-    const distGraph = unifiedDistGraph();
+    const distGraph = requireUnifiedDistGraph();
 
     expect(entryKeys(distGraph)).toEqual(
       expect.arrayContaining([
@@ -175,7 +183,7 @@ describe("tsdown config", () => {
     if (typeof external !== "function") {
       throw new Error("expected unified graph external predicate");
     }
-    const externalize = external as TsdownExternalFunction;
+    const externalize = external;
     expect(externalize("qrcode-terminal/lib/main.js", undefined, false)).toBe(true);
   });
 

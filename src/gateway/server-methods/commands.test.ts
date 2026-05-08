@@ -182,7 +182,7 @@ function callHandler(params: Record<string, unknown> = {}) {
   return result;
 }
 
-function requireCommand<T extends { name: string }>(commands: T[], name: string): T {
+function requireCommand<T extends Record<string, unknown>>(commands: T[], name: string): T {
   const command = commands.find((entry) => entry.name === name);
   if (!command) {
     throw new Error(`expected ${name} command`);

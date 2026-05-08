@@ -18,7 +18,9 @@ describe("gateway chat.inject transcript writes", () => {
         message: "hello",
       });
       expect(appended.ok).toBe(true);
-      expect(appended.messageId).toEqual(expect.any(String));
+      if (!appended.messageId) {
+        throw new Error("expected appended message id");
+      }
       expect(appended.messageId.length).toBeGreaterThan(0);
 
       const lines = fs.readFileSync(transcriptPath, "utf-8").split(/\r?\n/).filter(Boolean);
@@ -61,7 +63,9 @@ describe("gateway chat.inject transcript writes", () => {
         message: "hello",
       });
       expect(appended.ok).toBe(true);
-      expect(appended.messageId).toEqual(expect.any(String));
+      if (!appended.messageId) {
+        throw new Error("expected appended message id");
+      }
       expect(appended.messageId.length).toBeGreaterThan(0);
 
       const lines = fs.readFileSync(transcriptPath, "utf-8").split(/\r?\n/).filter(Boolean);

@@ -72,9 +72,9 @@ async function invokeWebhook(params: {
   onEvents?: ReturnType<typeof vi.fn>;
   autoSign?: boolean;
   runtime?: {
-    log: ReturnType<typeof vi.fn>;
-    error: ReturnType<typeof vi.fn>;
-    exit: ReturnType<typeof vi.fn>;
+    log: (...args: unknown[]) => void;
+    error: (...args: unknown[]) => void;
+    exit: (...args: unknown[]) => void;
   };
 }) {
   const onEventsMock = params.onEvents ?? vi.fn(async () => {});
@@ -188,13 +188,13 @@ async function invokeMiddlewarePostContract(params: {
   };
 }
 
-const sharedWebhookPostContractCases = [
-  { name: "node handler", invoke: invokeNodePostContract },
-  { name: "middleware", invoke: invokeMiddlewarePostContract },
-] satisfies Array<{
+const sharedWebhookPostContractCases: Array<{
   name: string;
   invoke: WebhookPostInvoker;
-}>;
+}> = [
+  { name: "node handler", invoke: invokeNodePostContract },
+  { name: "middleware", invoke: invokeMiddlewarePostContract },
+];
 
 async function expectSignedRawBodyWins(params: { rawBody: string | Buffer; signedUserId: string }) {
   const onEvents = vi.fn(async () => {});

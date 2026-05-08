@@ -477,7 +477,7 @@ describe("DiscordVoiceManager", () => {
       }
     ).handleSpeakingStart(entry, "u1");
 
-    expect(player.stop).not.toHaveBeenCalled();
+    expect((player as unknown as { stop: ReturnType<typeof vi.fn> }).stop).not.toHaveBeenCalled();
     expect(connection.receiver.subscribe).not.toHaveBeenCalled();
   });
 

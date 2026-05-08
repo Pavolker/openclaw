@@ -94,7 +94,7 @@ describe("cron main job passes heartbeat target=last", () => {
     // The heartbeat config passed should include target: "last" so the
     // heartbeat runner delivers the response to the last active channel.
     const callArgs = requireRunHeartbeatOnceCall(runHeartbeatOnce);
-    expect(callArgs.heartbeat.target).toBe("last");
+    expect(callArgs.heartbeat).toMatchObject({ target: "last" });
   });
 
   it("should preserve heartbeat.target=last when wakeMode=now falls back to requestHeartbeat", async () => {
