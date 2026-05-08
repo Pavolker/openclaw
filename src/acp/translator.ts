@@ -1246,7 +1246,9 @@ export class AcpGatewayAgent implements Agent {
       return;
     }
 
-    const pending = this.findPendingBySessionKey(params.sessionKey, params.runId);
+    const pending = params.runId
+      ? this.findPendingBySessionKey(params.sessionKey, params.runId)
+      : this.findUniquePendingBySessionKey(params.sessionKey);
     if (!pending) {
       return;
     }
@@ -1266,10 +1268,11 @@ export class AcpGatewayAgent implements Agent {
     relay: PendingApprovalRelay,
     approvalEvent: GatewayExecApprovalEvent,
   ): Promise<void> {
+    let resolved = false;
     try {
       const details = await this.getGatewayApprovalDetails(relay.approvalId);
       if (!this.isApprovalRelayActive(relay)) {
-        await this.resolveGatewayApproval(relay.approvalId, "deny");
+        resolved = await this.resolveGatewayApproval(relay.approvalId, "deny");
         return;
       }
 
@@ -1287,11 +1290,16 @@ export class AcpGatewayAgent implements Agent {
       }
 
       const selectedDecision = this.isApprovalRelayActive(relay) && decision ? decision : "deny";
-      await this.resolveGatewayApproval(relay.approvalId, selectedDecision);
+      resolved = await this.resolveGatewayApproval(relay.approvalId, selectedDecision);
     } finally {
       const current = this.approvalRelays.get(relay.approvalId);
       if (current === relay && current.state === "active") {
-        current.state = "completed";
+        if (resolved) {
+          // Keep completed relays until prompt cleanup as replay/dedup sentinels.
+          current.state = "completed";
+        } else {
+          this.approvalRelays.delete(relay.approvalId);
+        }
       }
     }
   }
@@ -1312,14 +1320,16 @@ export class AcpGatewayAgent implements Agent {
   private async resolveGatewayApproval(
     approvalId: string,
     decision: GatewayExecApprovalDecision,
-  ): Promise<void> {
+  ): Promise<boolean> {
     try {
       await this.gateway.request("exec.approval.resolve", {
         id: approvalId,
         decision,
       });
+      return true;
     } catch (err) {
       this.log(`approval relay resolve failed for ${approvalId}: ${String(err)}`);
+      return false;
     }
   }
 
@@ -1508,6 +1518,20 @@ export class AcpGatewayAgent implements Agent {
       }
     }
     return undefined;
+  }
+
+  private findUniquePendingBySessionKey(sessionKey: string): PendingPrompt | undefined {
+    let match: PendingPrompt | undefined;
+    for (const pending of this.pendingPrompts.values()) {
+      if (pending.sessionKey !== sessionKey) {
+        continue;
+      }
+      if (match) {
+        return undefined;
+      }
+      match = pending;
+    }
+    return match;
   }
 
   private reconcilePendingSessionKey(pending: PendingPrompt, sessionKey: string): void {

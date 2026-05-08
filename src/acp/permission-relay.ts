@@ -137,6 +137,8 @@ export function buildAcpPermissionRequest(params: {
   return {
     sessionId: params.sessionId,
     toolCall: {
+      // Raw approval events can arrive before Gateway emits a tool call id; the
+      // approval id remains the stable correlation key for those early prompts.
       toolCallId: params.event.toolCallId ?? `exec:${params.event.approvalId}`,
       title: params.event.title ?? "Command approval requested",
       kind: "execute",
