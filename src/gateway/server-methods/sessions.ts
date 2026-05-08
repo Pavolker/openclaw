@@ -19,6 +19,7 @@ import {
   resolveMainSessionKey,
   resolveSessionFilePath,
   resolveSessionFilePathOptions,
+  isSqliteSessionTranscriptLocator,
   type SessionEntry,
   upsertSessionEntry,
 } from "../../config/sessions.js";
@@ -1240,7 +1241,10 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       agentId: target.agentId,
       sourceFile: checkpoint.preCompaction.sessionFile,
       sourceSessionId: checkpoint.preCompaction.sessionId,
-      sessionDir: entry.sessionFile ? path.dirname(entry.sessionFile) : undefined,
+      sessionDir:
+        entry.sessionFile && !isSqliteSessionTranscriptLocator(entry.sessionFile)
+          ? path.dirname(entry.sessionFile)
+          : undefined,
     });
     if (!branchedSession?.sessionFile) {
       respond(
@@ -1358,7 +1362,10 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       agentId: target.agentId,
       sourceFile: checkpoint.preCompaction.sessionFile,
       sourceSessionId: checkpoint.preCompaction.sessionId,
-      sessionDir: entry.sessionFile ? path.dirname(entry.sessionFile) : undefined,
+      sessionDir:
+        entry.sessionFile && !isSqliteSessionTranscriptLocator(entry.sessionFile)
+          ? path.dirname(entry.sessionFile)
+          : undefined,
     });
     if (!restoredSession?.sessionFile) {
       respond(
