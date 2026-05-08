@@ -261,14 +261,21 @@ RUN install -d -m 0700 -o node -g node /home/node/.openclaw && \
 
 # Railway mounts the persistent volume as /data. Make sure the runtime can
 # write the OpenClaw state directory there before dropping privileges.
-# Also copy openclaw.json to the state dir so the gateway finds it.
 RUN cat > /usr/local/bin/openclaw-entrypoint <<'SCRIPT'
 #!/bin/sh
 set -eu
-
 mkdir -p /data/.openclaw /data/workspace
+chown -R node:node /data /home/node/.openclaw
+exec gosu node "$@"
+SCRIPT
+RUN chmod 755 /usr/local/bin/openclaw-entrypoint
 
-cat > /data/.openclaw/openclaw.json <<'CONFIG'
+# Write the runtime config file into the image at the expected state dir
+# location so the gateway loads it on first start (Railway ENTRYPOINT may
+# not run, and the volume may be empty on first deploy).
+RUN mkdir -p /home/node/.openclaw && \
+    chown node:node /home/node/.openclaw && \
+    cat > /home/node/.openclaw/openclaw.json <<'CONFIG'
 {
   "agents": {
     "defaults": {
@@ -289,13 +296,11 @@ cat > /data/.openclaw/openclaw.json <<'CONFIG'
   }
 }
 CONFIG
-
-chown -R node:node /data /home/node/.openclaw
-exec gosu node "$@"
-SCRIPT
-RUN chmod 755 /usr/local/bin/openclaw-entrypoint
+# Fallback: also write to /app so OPENCLAW_CONFIG_PATH can find it
+cp /home/node/.openclaw/openclaw.json /app/openclaw.json
 
 ENV NODE_ENV=production
+ENV OPENCLAW_CONFIG_PATH=/app/openclaw.json
 
 # Security hardening: Run the image as root only long enough to prepare the
 # Railway-mounted volume, then drop to the non-root node user via gosu.
