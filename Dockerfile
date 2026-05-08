@@ -267,9 +267,17 @@ RUN cat > /usr/local/bin/openclaw-entrypoint <<'EOF'
 set -eu
 
 mkdir -p /data/.openclaw /data/workspace
-if [ -f /app/openclaw.json ] && [ ! -f /data/.openclaw/openclaw.json ]; then
+if [ -f /app/openclaw.json ]; then
+  echo "[entrypoint] found /app/openclaw.json"
   cp /app/openclaw.json /data/.openclaw/openclaw.json
   chown node:node /data/.openclaw/openclaw.json
+else
+  echo "[entrypoint] /app/openclaw.json NOT FOUND"
+fi
+if [ -d /app/docs/reference/templates ]; then
+  echo "[entrypoint] templates dir exists: $(ls /app/docs/reference/templates | head -5)"
+else
+  echo "[entrypoint] templates dir NOT FOUND"
 fi
 chown -R node:node /data /home/node/.openclaw
 exec gosu node "$@"
