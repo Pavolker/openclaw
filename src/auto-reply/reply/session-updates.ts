@@ -341,6 +341,9 @@ function resolveCompactionSessionFile(params: {
     rewrittenSessionFile && path.isAbsolute(rewrittenSessionFile)
       ? canonicalizeAbsoluteSessionFilePath(rewrittenSessionFile)
       : rewrittenSessionFile;
+  if (normalizedRewrittenSessionFile && path.isAbsolute(normalizedRewrittenSessionFile)) {
+    return normalizedRewrittenSessionFile;
+  }
   return resolveSessionFilePath(
     params.newSessionId,
     normalizedRewrittenSessionFile ? { sessionFile: normalizedRewrittenSessionFile } : undefined,

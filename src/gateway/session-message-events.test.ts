@@ -64,7 +64,7 @@ afterEach(async () => {
   );
 });
 
-async function createSessionRowsFixtureDir(): Promise<string> {
+async function createTranscriptFixtureDir(): Promise<string> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-session-message-"));
   cleanupDirs.push(dir);
   if (!previousStateDirCaptured) {
@@ -74,9 +74,7 @@ async function createSessionRowsFixtureDir(): Promise<string> {
   process.env.OPENCLAW_STATE_DIR = dir;
   closeOpenClawAgentDatabasesForTest();
   closeOpenClawStateDatabaseForTest();
-  const sessionsDir = path.join(dir, "agents", "main", "sessions");
-  await fs.mkdir(sessionsDir, { recursive: true });
-  return sessionsDir;
+  return path.join(dir, "transcript-fixtures", "main");
 }
 
 function replaceTranscriptEvents(params: {
@@ -174,7 +172,7 @@ async function expectNoMessageWithin(params: {
 
 describe("session.message websocket events", () => {
   test("includes spawned session ownership metadata on lifecycle sessions.changed events", async () => {
-    await createSessionRowsFixtureDir();
+    await createTranscriptFixtureDir();
     await seedGatewaySessionEntries({
       entries: {
         child: {
@@ -222,7 +220,7 @@ describe("session.message websocket events", () => {
   });
 
   test("only sends transcript events to subscribed operator clients", async () => {
-    await createSessionRowsFixtureDir();
+    await createTranscriptFixtureDir();
     await seedGatewaySessionEntries({
       entries: {
         main: {
@@ -279,7 +277,7 @@ describe("session.message websocket events", () => {
   });
 
   test("broadcasts appended transcript messages with the session key", async () => {
-    await createSessionRowsFixtureDir();
+    await createTranscriptFixtureDir();
     await seedGatewaySessionEntries({
       entries: {
         main: {
@@ -321,7 +319,7 @@ describe("session.message websocket events", () => {
   });
 
   test("strips blocked original content from live session.message events", async () => {
-    const sessionsDir = await createSessionRowsFixtureDir();
+    const transcriptDir = await createTranscriptFixtureDir();
     await seedGatewaySessionEntries({
       entries: {
         main: {
@@ -330,7 +328,7 @@ describe("session.message websocket events", () => {
         },
       },
     });
-    const transcriptPath = path.join(sessionsDir, "sess-main.jsonl");
+    const transcriptPath = path.join(transcriptDir, "sess-main.jsonl");
     replaceTranscriptEvents({
       sessionId: "sess-main",
       transcriptPath,
@@ -364,7 +362,7 @@ describe("session.message websocket events", () => {
   });
 
   test("broadcasts redacted blocked user appends to live session listeners", async () => {
-    const sessionsDir = await createSessionRowsFixtureDir();
+    const transcriptDir = await createTranscriptFixtureDir();
     await seedGatewaySessionEntries({
       entries: {
         main: {
@@ -377,7 +375,7 @@ describe("session.message websocket events", () => {
     await withOperatorSessionSubscriber(async (ws) => {
       const messageEventPromise = waitForSessionMessageEvent(ws, "agent:main:main");
       emitSessionTranscriptUpdate({
-        sessionFile: path.join(sessionsDir, "sess-main.jsonl"),
+        sessionFile: path.join(transcriptDir, "sess-main.jsonl"),
         sessionKey: "agent:main:main",
         messageId: "blocked-message",
         message: {
@@ -410,7 +408,7 @@ describe("session.message websocket events", () => {
   });
 
   test("includes live usage metadata on session.message and sessions.changed transcript events", async () => {
-    const sessionsDir = await createSessionRowsFixtureDir();
+    const transcriptDir = await createTranscriptFixtureDir();
     await seedGatewaySessionEntries({
       entries: {
         main: {
@@ -424,7 +422,7 @@ describe("session.message websocket events", () => {
         },
       },
     });
-    const transcriptPath = path.join(sessionsDir, "sess-main.jsonl");
+    const transcriptPath = path.join(transcriptDir, "sess-main.jsonl");
     const transcriptMessage = {
       role: "assistant",
       content: [{ type: "text", text: "usage snapshot" }],
@@ -483,8 +481,8 @@ describe("session.message websocket events", () => {
   });
 
   test("includes spawnedBy metadata on session.message and sessions.changed transcript events", async () => {
-    const sessionsDir = await createSessionRowsFixtureDir();
-    const transcriptPath = path.join(sessionsDir, "sess-child.jsonl");
+    const transcriptDir = await createTranscriptFixtureDir();
+    const transcriptPath = path.join(transcriptDir, "sess-child.jsonl");
     await seedGatewaySessionEntries({
       entries: {
         child: {
@@ -577,8 +575,8 @@ describe("session.message websocket events", () => {
   });
 
   test("includes route thread metadata on session.message and sessions.changed transcript events", async () => {
-    const sessionsDir = await createSessionRowsFixtureDir();
-    const transcriptPath = path.join(sessionsDir, "sess-thread.jsonl");
+    const transcriptDir = await createTranscriptFixtureDir();
+    const transcriptPath = path.join(transcriptDir, "sess-thread.jsonl");
     await seedGatewaySessionEntries({
       entries: {
         main: {
@@ -633,7 +631,7 @@ describe("session.message websocket events", () => {
   });
 
   test("sessions.messages.subscribe only delivers transcript events for the requested session", async () => {
-    await createSessionRowsFixtureDir();
+    await createTranscriptFixtureDir();
     await seedGatewaySessionEntries({
       entries: {
         main: {
@@ -718,8 +716,8 @@ describe("session.message websocket events", () => {
   });
 
   test("routes transcript-only updates to the freshest session owner when different sessionIds share a transcript path", async () => {
-    const sessionsDir = await createSessionRowsFixtureDir();
-    const transcriptPath = path.join(sessionsDir, "shared.jsonl");
+    const transcriptDir = await createTranscriptFixtureDir();
+    const transcriptPath = path.join(transcriptDir, "shared.jsonl");
     await seedGatewaySessionEntries({
       entries: {
         older: {
