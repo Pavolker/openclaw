@@ -17,6 +17,7 @@ export type ExecuteNodeHostCommandParams = {
   security: ExecSecurity;
   ask: ExecAsk;
   strictInlineEval?: boolean;
+  commandHighlighting?: boolean;
   timeoutSec?: number;
   defaultTimeoutSec: number;
   approvalRunningNoticeMs: number;
