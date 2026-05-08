@@ -157,7 +157,7 @@ WORKDIR /app
 # `error setting certificate file`.
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-      ca-certificates procps hostname curl git lsof openssl python3 tini && \
+      ca-certificates procps hostname curl git lsof openssl python3 tini gosu && \
     update-ca-certificates
 
 RUN chown node:node /app
@@ -257,12 +257,23 @@ RUN ln -sf /app/openclaw.mjs /usr/local/bin/openclaw \
 RUN install -d -m 0700 -o node -g node /home/node/.openclaw && \
     stat -c '%U:%G %a' /home/node/.openclaw | grep -qx 'node:node 700'
 
+# Railway mounts the persistent volume as /data. Make sure the runtime can
+# write the OpenClaw state directory there before dropping privileges.
+RUN cat > /usr/local/bin/openclaw-entrypoint <<'EOF'
+#!/bin/sh
+set -eu
+
+mkdir -p /data/.openclaw /data/workspace
+chown -R node:node /data /home/node/.openclaw
+exec gosu node "$@"
+EOF
+RUN chmod 755 /usr/local/bin/openclaw-entrypoint
+
 ENV NODE_ENV=production
 
-# Security hardening: Run as non-root user
-# The node:24-bookworm image includes a 'node' user (uid 1000)
-# This reduces the attack surface by preventing container escape via root privileges
-USER node
+# Security hardening: Run the image as root only long enough to prepare the
+# Railway-mounted volume, then drop to the non-root node user via gosu.
+USER root
 
 # Start gateway server with default config.
 # Binds to loopback (127.0.0.1) by default for security.
@@ -278,5 +289,5 @@ USER node
 # For external access from host/ingress, override bind to "lan" and set auth.
 HEALTHCHECK --interval=3m --timeout=10s --start-period=15s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:18789/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
-ENTRYPOINT ["tini", "-s", "--"]
+ENTRYPOINT ["tini", "-s", "--", "/usr/local/bin/openclaw-entrypoint"]
 CMD ["node", "openclaw.mjs", "gateway", "--allow-unconfigured"]
