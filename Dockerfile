@@ -170,6 +170,7 @@ COPY --from=runtime-assets --chown=node:node /app/openclaw.mjs .
 COPY --from=runtime-assets --chown=node:node /app/${OPENCLAW_BUNDLED_PLUGIN_DIR} ./${OPENCLAW_BUNDLED_PLUGIN_DIR}
 COPY --from=runtime-assets --chown=node:node /app/skills ./skills
 COPY --from=runtime-assets --chown=node:node /app/docs ./docs
+COPY --from=runtime-assets --chown=node:node /app/docs/reference/templates ./docs/reference/templates
 COPY --from=runtime-assets --chown=node:node /app/qa ./qa
 
 # Keep pnpm available in the runtime image for container-local workflows.
