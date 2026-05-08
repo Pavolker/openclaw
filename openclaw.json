@@ -1,19 +1,19 @@
 {
-  agents: {
-    defaults: {
-      model: {
-        primary: "openrouter/auto",
-        fallbacks: [
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "openrouter/auto",
+        "fallbacks": [
           "deepseek/deepseek-v4-flash",
           "openai/gpt-5.5",
-          "anthropic/claude-sonnet-4-20250514",
-        ],
-      },
-    },
+          "anthropic/claude-sonnet-4-20250514"
+        ]
+      }
+    }
   },
-  channels: {
-    telegram: {
-      allowFrom: ["7553060603"],
-    },
-  },
+  "channels": {
+    "telegram": {
+      "allowFrom": ["7553060603"]
+    }
+  }
 }
