@@ -378,7 +378,11 @@ describe("lmstudio-models", () => {
         context_length: 32768,
       }),
     });
-    const loadInit = loadCall![1] as RequestInit;
+    expect(loadCall).toBeDefined();
+    if (!loadCall) {
+      throw new Error("Expected LM Studio load request.");
+    }
+    const loadInit = loadCall[1] as RequestInit;
     const loadBody = parseJsonRequestBody(loadInit) as { context_length: number };
     expect(loadBody.context_length).not.toBe(LMSTUDIO_DEFAULT_LOAD_CONTEXT_LENGTH);
   });

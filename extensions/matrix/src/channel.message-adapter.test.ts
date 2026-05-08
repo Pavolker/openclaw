@@ -44,8 +44,9 @@ describe("matrix channel message adapter", () => {
 
   it("backs declared durable-final capabilities with runtime outbound proofs", async () => {
     const adapter = matrixPlugin.message;
-    if (adapter?.send?.text === undefined || adapter.send.media === undefined) {
-      throw new Error("expected matrix text and media message adapter");
+    expect(adapter).toBeDefined();
+    if (!adapter?.send?.text || !adapter.send.media) {
+      throw new Error("Expected Matrix message adapter send capabilities.");
     }
 
     const proveText = async () => {
@@ -91,7 +92,7 @@ describe("matrix channel message adapter", () => {
 
     const proveReplyThread = async () => {
       mocks.sendMessageMatrix.mockClear();
-      const result = await adapter!.send!.text!({
+      const result = await adapter.send.text({
         cfg,
         to: "room:!room:example",
         text: "threaded",
@@ -114,14 +115,14 @@ describe("matrix channel message adapter", () => {
 
     await verifyChannelMessageAdapterCapabilityProofs({
       adapterName: "matrixMessageAdapter",
-      adapter: adapter!,
+      adapter,
       proofs: {
         text: proveText,
         media: proveMedia,
         replyTo: proveReplyThread,
         thread: proveReplyThread,
         messageSendingHooks: () => {
-          expect(adapter!.send!.text).toBeTypeOf("function");
+          expect(adapter.send?.text).toBeTypeOf("function");
         },
       },
     });

@@ -509,8 +509,9 @@ describe("CLI attempt execution", () => {
       embeddedAssistantGapFill: true,
     });
     const sessionFile = updatedFirst?.sessionFile;
+    expect(sessionFile).toBeTruthy();
     if (!sessionFile) {
-      throw new Error("expected embedded gap-fill persistence to create a session file");
+      throw new Error("Expected CLI transcript session file.");
     }
 
     await appendSessionTranscriptMessage({
@@ -539,7 +540,7 @@ describe("CLI attempt execution", () => {
       embeddedAssistantGapFill: true,
     });
 
-    const messages = await readSessionMessages(sessionFile!);
+    const messages = await readSessionMessages(sessionFile);
     expect(messages).toHaveLength(3);
     expect(messages.map((message) => message.role)).toEqual(["assistant", "user", "assistant"]);
     expect(messages[2]).toMatchObject({

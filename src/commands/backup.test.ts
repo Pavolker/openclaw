@@ -226,8 +226,10 @@ describe("backup commands", () => {
 
       const stateAsset = result.assets.find((asset) => asset.kind === "state");
       const workspaceAsset = result.assets.find((asset) => asset.kind === "workspace");
+      expect(stateAsset).toBeDefined();
+      expect(workspaceAsset).toBeDefined();
       if (!stateAsset || !workspaceAsset) {
-        throw new Error("expected state and workspace backup assets");
+        throw new Error("Expected backup assets to include state and workspace entries.");
       }
       expect(capturedEntryPaths).toHaveLength(result.assets.length + 1);
 
@@ -244,17 +246,17 @@ describe("backup commands", () => {
         path.posix.join(
           buildBackupArchiveRoot(nowMs),
           "payload",
-          encodeAbsolutePathForBackupArchive(stateAsset!.sourcePath),
+          encodeAbsolutePathForBackupArchive(stateAsset.sourcePath),
         ),
       );
 
-      const remappedWorkspaceEntry = { path: workspaceAsset!.sourcePath };
+      const remappedWorkspaceEntry = { path: workspaceAsset.sourcePath };
       onWriteEntry(remappedWorkspaceEntry);
       expect(remappedWorkspaceEntry.path).toBe(
         path.posix.join(
           buildBackupArchiveRoot(nowMs),
           "payload",
-          encodeAbsolutePathForBackupArchive(workspaceAsset!.sourcePath),
+          encodeAbsolutePathForBackupArchive(workspaceAsset.sourcePath),
         ),
       );
     } finally {
