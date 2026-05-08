@@ -11,4 +11,9 @@
       },
     },
   },
+  channels: {
+    telegram: {
+      allowFrom: ["7553060603"],
+    },
+  },
 }
