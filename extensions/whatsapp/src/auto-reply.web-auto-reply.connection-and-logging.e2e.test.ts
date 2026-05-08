@@ -751,8 +751,11 @@ describe("web auto-reply connection", () => {
           timestamp: 1735689600000,
           spies,
         });
+        if (!capturedOnMessage) {
+          throw new Error("Expected WhatsApp web runtime to register onMessage.");
+        }
         await sendWebDirectInboundMessage({
-          onMessage: capturedOnMessage!,
+          onMessage: capturedOnMessage,
           body: "second",
           from: "+1",
           to: "+2",

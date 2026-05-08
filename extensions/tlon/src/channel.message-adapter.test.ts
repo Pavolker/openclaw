@@ -92,7 +92,7 @@ describe("tlon channel message adapter", () => {
 
     const proveReplyThread = async () => {
       mocks.sendText.mockClear();
-      const result = await adapter!.send!.text!({
+      const result = await adapter.send.text({
         cfg,
         to: "chat/~nec/general",
         text: "threaded",
@@ -112,14 +112,14 @@ describe("tlon channel message adapter", () => {
 
     await verifyChannelMessageAdapterCapabilityProofs({
       adapterName: "tlonMessageAdapter",
-      adapter: adapter!,
+      adapter,
       proofs: {
         text: proveText,
         media: proveMedia,
         replyTo: proveReplyThread,
         thread: proveReplyThread,
         messageSendingHooks: () => {
-          expect(adapter!.send!.text).toBeTypeOf("function");
+          expect(adapter.send?.text).toBeTypeOf("function");
         },
       },
     });
