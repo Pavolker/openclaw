@@ -261,11 +261,16 @@ RUN install -d -m 0700 -o node -g node /home/node/.openclaw && \
 
 # Railway mounts the persistent volume as /data. Make sure the runtime can
 # write the OpenClaw state directory there before dropping privileges.
+# Also copy openclaw.json to the state dir so the gateway finds it.
 RUN cat > /usr/local/bin/openclaw-entrypoint <<'EOF'
 #!/bin/sh
 set -eu
 
 mkdir -p /data/.openclaw /data/workspace
+if [ -f /app/openclaw.json ] && [ ! -f /data/.openclaw/openclaw.json ]; then
+  cp /app/openclaw.json /data/.openclaw/openclaw.json
+  chown node:node /data/.openclaw/openclaw.json
+fi
 chown -R node:node /data /home/node/.openclaw
 exec gosu node "$@"
 EOF
