@@ -23,7 +23,7 @@ function createState(overrides: Partial<AppViewState> = {}) {
     sessionsHideCron: true,
     sessionsResult: {
       ts: 0,
-      path: "",
+      databasePath: "",
       count: 0,
       defaults: { modelProvider: "openai", model: "gpt-5", contextTokens: null },
       sessions: [],
@@ -121,7 +121,7 @@ describe("chat header controls (browser)", () => {
       },
       sessionsResult: {
         ts: 0,
-        path: "",
+        databasePath: "",
         count: 3,
         defaults: { modelProvider: "openai", model: "gpt-5", contextTokens: null },
         sessions: [
@@ -167,7 +167,7 @@ describe("chat header controls (browser)", () => {
       },
       sessionsResult: {
         ts: 0,
-        path: "",
+        databasePath: "",
         count: 2,
         defaults: { modelProvider: "openai", model: "gpt-5", contextTokens: null },
         sessions: [

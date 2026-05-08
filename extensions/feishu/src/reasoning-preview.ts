@@ -1,19 +1,16 @@
-import { loadSessionStore, resolveSessionStoreEntry } from "./bot-runtime-api.js";
+import { getSessionEntry, resolveAgentIdFromSessionKey } from "./bot-runtime-api.js";
 
-export function resolveFeishuReasoningPreviewEnabled(params: {
-  storePath: string;
-  sessionKey?: string;
-}): boolean {
+export function resolveFeishuReasoningPreviewEnabled(params: { sessionKey?: string }): boolean {
   if (!params.sessionKey) {
     return false;
   }
 
   try {
-    const store = loadSessionStore(params.storePath);
-    return (
-      resolveSessionStoreEntry({ store, sessionKey: params.sessionKey }).existing
-        ?.reasoningLevel === "stream"
-    );
+    const agentId = resolveAgentIdFromSessionKey(params.sessionKey);
+    if (!agentId) {
+      return false;
+    }
+    return getSessionEntry({ agentId, sessionKey: params.sessionKey })?.reasoningLevel === "stream";
   } catch {
     return false;
   }

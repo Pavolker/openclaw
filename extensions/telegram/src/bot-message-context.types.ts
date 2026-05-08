@@ -62,7 +62,6 @@ export type TelegramMessageContextSessionRuntimeOverrides = Partial<
     | "recordInboundSession"
     | "resolveInboundLastRouteSessionKey"
     | "resolvePinnedMainDmOwnerFromAllowlist"
-    | "resolveStorePath"
   >
 >;
 

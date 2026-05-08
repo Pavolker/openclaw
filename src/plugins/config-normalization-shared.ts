@@ -1,4 +1,3 @@
-import { normalizeChatChannelId } from "../channels/ids.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import {
   normalizeOptionalLowercaseString,
@@ -226,7 +225,7 @@ export function isBundledChannelEnabledByChannelConfig(
   if (!cfg) {
     return false;
   }
-  const channelId = normalizeChatChannelId(pluginId);
+  const channelId = normalizeOptionalLowercaseString(pluginId);
   if (!channelId) {
     return false;
   }

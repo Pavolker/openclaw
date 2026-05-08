@@ -29,8 +29,18 @@ import {
   readCodexAppServerBinding,
   writeCodexAppServerBinding,
   type CodexAppServerAuthProfileLookup,
+  type CodexAppServerBindingIdentity,
   type CodexAppServerThreadBinding,
 } from "./session-binding.js";
+
+function resolveCodexAppServerBindingIdentity(
+  params: EmbeddedRunAttemptParams,
+): CodexAppServerBindingIdentity {
+  return {
+    sessionKey: params.sessionKey,
+    sessionFile: params.sessionFile,
+  };
+}
 
 export async function startOrResumeThread(params: {
   client: CodexAppServerClient;
@@ -42,7 +52,8 @@ export async function startOrResumeThread(params: {
   config?: JsonObject;
 }): Promise<CodexAppServerThreadBinding> {
   const dynamicToolsFingerprint = fingerprintDynamicTools(params.dynamicTools);
-  const binding = await readCodexAppServerBinding(params.params.sessionFile, {
+  const bindingIdentity = resolveCodexAppServerBindingIdentity(params.params);
+  const binding = await readCodexAppServerBinding(bindingIdentity, {
     authProfileStore: params.params.authProfileStore,
     agentDir: params.params.agentDir,
     config: params.params.config,
@@ -76,7 +87,7 @@ export async function startOrResumeThread(params: {
             threadId: binding.threadId,
           },
         );
-        await clearCodexAppServerBinding(params.params.sessionFile);
+        await clearCodexAppServerBinding(bindingIdentity);
       }
     } else {
       try {
@@ -102,8 +113,10 @@ export async function startOrResumeThread(params: {
           config: params.params.config,
         });
         await writeCodexAppServerBinding(
-          params.params.sessionFile,
+          bindingIdentity,
           {
+            sessionKey: params.params.sessionKey,
+            sessionFile: params.params.sessionFile,
             threadId: response.thread.id,
             cwd: params.cwd,
             authProfileId: boundAuthProfileId,
@@ -134,7 +147,7 @@ export async function startOrResumeThread(params: {
         embeddedAgentLog.warn("codex app-server thread resume failed; starting a new thread", {
           error,
         });
-        await clearCodexAppServerBinding(params.params.sessionFile);
+        await clearCodexAppServerBinding(bindingIdentity);
       }
     }
   }
@@ -161,8 +174,10 @@ export async function startOrResumeThread(params: {
   const createdAt = new Date().toISOString();
   if (!preserveExistingBinding) {
     await writeCodexAppServerBinding(
-      params.params.sessionFile,
+      bindingIdentity,
       {
+        sessionKey: params.params.sessionKey,
+        sessionFile: params.params.sessionFile,
         threadId: response.thread.id,
         cwd: params.cwd,
         authProfileId: params.params.authProfileId,
@@ -181,6 +196,7 @@ export async function startOrResumeThread(params: {
   return {
     schemaVersion: 1,
     threadId: response.thread.id,
+    sessionKey: params.params.sessionKey,
     sessionFile: params.params.sessionFile,
     cwd: params.cwd,
     authProfileId: params.params.authProfileId,

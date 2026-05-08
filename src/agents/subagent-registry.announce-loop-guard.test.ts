@@ -10,10 +10,9 @@ import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vi
 
 const mocks = vi.hoisted(() => ({
   getRuntimeConfig: vi.fn(() => ({
-    session: { store: "/tmp/test-store", mainKey: "main" },
+    session: { mainKey: "main" },
     agents: {},
   })),
-  updateSessionStore: vi.fn(),
   callGateway: vi.fn().mockResolvedValue({ status: "ok" }),
   onAgentEventStop: vi.fn(),
   onAgentEvent: vi.fn(),
@@ -31,18 +30,23 @@ vi.mock("../config/config.js", () => ({
 }));
 
 vi.mock("../config/sessions.js", () => ({
-  loadSessionStore: () => ({
-    "agent:main:subagent:child-1": { sessionId: "sess-child-1", updatedAt: 1 },
-    "agent:main:subagent:expired-child": { sessionId: "sess-expired", updatedAt: 1 },
-    "agent:main:subagent:retry-budget": { sessionId: "sess-retry", updatedAt: 1 },
-  }),
+  getSessionEntry: ({ sessionKey }: { sessionKey: string }) =>
+    ({
+      "agent:main:subagent:child-1": { sessionId: "sess-child-1", updatedAt: 1 },
+      "agent:main:subagent:expired-child": { sessionId: "sess-expired", updatedAt: 1 },
+      "agent:main:subagent:retry-budget": { sessionId: "sess-retry", updatedAt: 1 },
+    })[sessionKey],
+  listSessionEntries: () =>
+    Object.entries({
+      "agent:main:subagent:child-1": { sessionId: "sess-child-1", updatedAt: 1 },
+      "agent:main:subagent:expired-child": { sessionId: "sess-expired", updatedAt: 1 },
+      "agent:main:subagent:retry-budget": { sessionId: "sess-retry", updatedAt: 1 },
+    }).map(([sessionKey, entry]) => ({ sessionKey, entry })),
   resolveAgentIdFromSessionKey: (key: string) => {
     const match = key.match(/^agent:([^:]+)/);
     return match?.[1] ?? "main";
   },
   resolveMainSessionKey: () => "agent:main:main",
-  resolveStorePath: () => "/tmp/test-store",
-  updateSessionStore: mocks.updateSessionStore,
 }));
 
 vi.mock("../gateway/call.js", () => ({
@@ -94,7 +98,6 @@ describe("announce loop guard (#18264)", () => {
     mocks.runSubagentAnnounceFlow.mockResolvedValue(false);
     mocks.scheduleOrphanRecovery.mockClear();
     mocks.saveSubagentRegistryToDisk.mockClear();
-    mocks.updateSessionStore.mockClear();
     registry.resetSubagentRegistryForTests({ persist: false });
     registry.__testing.setDepsForTest({
       captureSubagentCompletionReply: mocks.captureSubagentCompletionReply,

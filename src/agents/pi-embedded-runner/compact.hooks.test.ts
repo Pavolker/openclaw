@@ -49,7 +49,7 @@ type SessionHookEvent = {
 };
 type PostCompactionSyncParams = {
   reason: string;
-  sessionFiles: string[];
+  sessionTranscripts: string[];
 };
 type PostCompactionSync = (params?: unknown) => Promise<void>;
 type Deferred<T> = {
@@ -775,7 +775,7 @@ describe("compactEmbeddedPiSessionDirect hooks", () => {
       expect(sync).toHaveBeenCalledTimes(1);
       expect(sync).toHaveBeenCalledWith({
         reason: "post-compaction",
-        sessionFiles: [TEST_ROTATED_SESSION_FILE],
+        sessionTranscripts: [TEST_ROTATED_SESSION_FILE],
       });
     } finally {
       cleanup();
@@ -876,7 +876,7 @@ describe("compactEmbeddedPiSessionDirect hooks", () => {
     });
     await expect(syncStarted.promise).resolves.toEqual({
       reason: "post-compaction",
-      sessionFiles: [TEST_SESSION_FILE],
+      sessionTranscripts: [TEST_SESSION_FILE],
     });
     expect(settled).toBe(false);
     syncRelease.resolve(undefined);
@@ -930,7 +930,7 @@ describe("compactEmbeddedPiSessionDirect hooks", () => {
     managerGate.resolve({ manager: { sync } });
     await expect(syncStarted.promise).resolves.toEqual({
       reason: "post-compaction",
-      sessionFiles: [TEST_SESSION_FILE],
+      sessionTranscripts: [TEST_SESSION_FILE],
     });
   });
 
@@ -1201,7 +1201,7 @@ describe("compactEmbeddedPiSession hooks (ownsCompaction engine)", () => {
       });
       expect(sync).toHaveBeenCalledWith({
         reason: "post-compaction",
-        sessionFiles: [TEST_SESSION_FILE],
+        sessionTranscripts: [TEST_SESSION_FILE],
       });
     } finally {
       cleanup();

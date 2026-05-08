@@ -36,7 +36,7 @@ import {
 } from "./attempt-execution.helpers.js";
 import { persistSessionEntry } from "./attempt-execution.shared.js";
 import { resolveAgentRunContext } from "./run-context.js";
-import { clearCliSessionInStore } from "./session-store.js";
+import { clearCliSessionEntry } from "./session-entry-updates.js";
 import type { AgentCommandOpts } from "./types.js";
 
 export {
@@ -81,7 +81,6 @@ type PersistTextTurnTranscriptParams = {
   sessionKey: string;
   sessionEntry: SessionEntry | undefined;
   sessionStore?: Record<string, SessionEntry>;
-  storePath?: string;
   sessionAgentId: string;
   threadId?: string | number;
   sessionCwd: string;
@@ -198,7 +197,6 @@ async function persistTextTurnTranscript(
     sessionKey: params.sessionKey,
     sessionEntry: params.sessionEntry,
     sessionStore: params.sessionStore,
-    storePath: params.storePath,
     agentId: params.sessionAgentId,
     threadId: params.threadId,
   });
@@ -280,7 +278,6 @@ export async function persistAcpTurnTranscript(params: {
   sessionKey: string;
   sessionEntry: SessionEntry | undefined;
   sessionStore?: Record<string, SessionEntry>;
-  storePath?: string;
   sessionAgentId: string;
   threadId?: string | number;
   sessionCwd: string;
@@ -304,7 +301,6 @@ export async function persistCliTurnTranscript(params: {
   sessionKey: string;
   sessionEntry: SessionEntry | undefined;
   sessionStore?: Record<string, SessionEntry>;
-  storePath?: string;
   sessionAgentId: string;
   threadId?: string | number;
   sessionCwd: string;
@@ -324,7 +320,6 @@ export async function persistCliTurnTranscript(params: {
     sessionKey: params.sessionKey,
     sessionEntry: params.sessionEntry,
     sessionStore: params.sessionStore,
-    storePath: params.storePath,
     sessionAgentId: params.sessionAgentId,
     threadId: params.threadId,
     sessionCwd: params.sessionCwd,
@@ -370,7 +365,6 @@ export function runAgentAttempt(params: {
   }) => void;
   authProfileProvider: string;
   sessionStore?: Record<string, SessionEntry>;
-  storePath?: string;
   allowTransientCooldownProbe?: boolean;
   modelFallbacksOverride?: string[];
   sessionHasHistory?: boolean;
@@ -480,13 +474,12 @@ export function runAgentAttempt(params: {
         `cli session reset: provider=${sanitizeForLog(cliExecutionProvider)} reason=transcript-missing sessionKey=${params.sessionKey ?? params.sessionId}`,
       );
 
-      if (params.sessionKey && params.sessionStore && params.storePath) {
+      if (params.sessionKey && params.sessionStore) {
         params.sessionEntry =
-          (await clearCliSessionInStore({
+          (await clearCliSessionEntry({
             provider: cliExecutionProvider,
             sessionKey: params.sessionKey,
             sessionStore: params.sessionStore,
-            storePath: params.storePath,
           })) ?? params.sessionEntry;
       }
 
@@ -540,27 +533,24 @@ export function runAgentAttempt(params: {
           err.reason === "session_expired" &&
           activeCliSessionBinding?.sessionId &&
           params.sessionKey &&
-          params.sessionStore &&
-          params.storePath
+          params.sessionStore
         ) {
           log.warn(
-            `CLI session expired, clearing from session store: provider=${sanitizeForLog(cliExecutionProvider)} sessionKey=${params.sessionKey}`,
+            `CLI session expired, clearing from SQLite session row: provider=${sanitizeForLog(cliExecutionProvider)} sessionKey=${params.sessionKey}`,
           );
 
           params.sessionEntry =
-            (await clearCliSessionInStore({
+            (await clearCliSessionEntry({
               provider: cliExecutionProvider,
               sessionKey: params.sessionKey,
               sessionStore: params.sessionStore,
-              storePath: params.storePath,
             })) ?? params.sessionEntry;
 
           return await runCliWithSession(undefined).then(async (result) => {
             if (
               result.meta.agentMeta?.cliSessionBinding?.sessionId &&
               params.sessionKey &&
-              params.sessionStore &&
-              params.storePath
+              params.sessionStore
             ) {
               const entry = params.sessionStore[params.sessionKey];
               if (entry) {
@@ -575,7 +565,6 @@ export function runAgentAttempt(params: {
                 await persistSessionEntry({
                   sessionStore: params.sessionStore,
                   sessionKey: params.sessionKey,
-                  storePath: params.storePath,
                   entry: updatedEntry,
                 });
               }

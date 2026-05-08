@@ -17,7 +17,12 @@ vi.mock("../../agents/sandbox.js", () => ({
 }));
 
 vi.mock("../../config/sessions/store.js", () => ({
-  updateSessionStore: vi.fn(async () => {}),
+  getSessionEntry: vi.fn(() => undefined),
+  mergeSessionEntry: (existing: SessionEntry | undefined, patch: Partial<SessionEntry>) => ({
+    ...existing,
+    ...patch,
+  }),
+  upsertSessionEntry: vi.fn(async () => {}),
 }));
 
 vi.mock("../../infra/system-events.js", () => ({
@@ -65,7 +70,6 @@ describe("mixed inline directives", () => {
       sessionEntry,
       sessionStore,
       sessionKey: "agent:main:dm:1",
-      storePath: undefined,
       elevatedEnabled: false,
       elevatedAllowed: false,
       elevatedFailures: [],
@@ -100,7 +104,6 @@ describe("mixed inline directives", () => {
       sessionEntry,
       sessionStore,
       sessionKey: "agent:main:dm:1",
-      storePath: undefined,
       elevatedEnabled: false,
       elevatedAllowed: false,
       defaultProvider: "anthropic",
@@ -139,7 +142,6 @@ describe("mixed inline directives", () => {
       sessionEntry,
       sessionStore,
       sessionKey: "agent:main:discord:user",
-      storePath: undefined,
       elevatedEnabled: false,
       elevatedAllowed: false,
       elevatedFailures: [],
@@ -174,7 +176,6 @@ describe("mixed inline directives", () => {
       sessionEntry,
       sessionStore,
       sessionKey: "agent:main:discord:user",
-      storePath: undefined,
       elevatedEnabled: false,
       elevatedAllowed: false,
       defaultProvider: "openrouter",
@@ -206,7 +207,6 @@ describe("mixed inline directives", () => {
       sessionEntry,
       sessionStore,
       sessionKey: "agent:main:telegram:user",
-      storePath: undefined,
       elevatedEnabled: false,
       elevatedAllowed: false,
       defaultProvider: "anthropic",

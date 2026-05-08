@@ -44,12 +44,21 @@ const persistentBindingMocks = vi.hoisted(() => ({
     ok: true,
   })),
 }));
-const sessionMocks = vi.hoisted(() => ({
-  loadSessionStore: vi.fn(),
-  recordSessionMetaFromInbound: vi.fn(),
-  resolveAndPersistSessionFile: vi.fn(),
-  resolveStorePath: vi.fn(),
-}));
+const sessionMocks = vi.hoisted(() => {
+  const sessionStore = { value: {} as Record<string, Record<string, unknown>> };
+  return {
+    getSessionEntry: vi.fn(
+      ({ sessionKey }: { sessionKey: string }) => sessionStore.value[sessionKey],
+    ),
+    listSessionEntries: vi.fn(() =>
+      Object.entries(sessionStore.value).map(([sessionKey, entry]) => ({ sessionKey, entry })),
+    ),
+    recordSessionMetaFromInbound: vi.fn(),
+    resolveAndPersistSessionFile: vi.fn(),
+    resolveSessionTranscriptPath: vi.fn(),
+    sessionStore,
+  };
+});
 const commandAuthMocks = vi.hoisted(() => ({
   resolveCommandArgMenu: vi.fn(),
 }));
@@ -122,12 +131,9 @@ vi.mock("openclaw/plugin-sdk/conversation-runtime", async () => {
         ctx: unknown;
         onError?: (error: unknown) => void;
       }) => {
-        const storePath = sessionMocks.resolveStorePath(params.cfg.session?.store, {
-          agentId: params.agentId,
-        });
         try {
           await sessionMocks.recordSessionMetaFromInbound({
-            storePath,
+            agentId: params.agentId,
             sessionKey: params.sessionKey,
             ctx: params.ctx,
           });
@@ -154,9 +160,10 @@ vi.mock("openclaw/plugin-sdk/session-store-runtime", async () => {
   );
   return {
     ...actual,
-    loadSessionStore: sessionMocks.loadSessionStore,
+    getSessionEntry: sessionMocks.getSessionEntry,
+    listSessionEntries: sessionMocks.listSessionEntries,
     resolveAndPersistSessionFile: sessionMocks.resolveAndPersistSessionFile,
-    resolveStorePath: sessionMocks.resolveStorePath,
+    resolveSessionTranscriptPath: sessionMocks.resolveSessionTranscriptPath,
   };
 });
 vi.mock("openclaw/plugin-sdk/command-auth-native", async () => {
@@ -464,7 +471,18 @@ describe("registerTelegramNativeCommands — session metadata", () => {
     persistentBindingMocks.ensureConfiguredBindingRouteReady.mockClear();
     persistentBindingMocks.ensureConfiguredBindingRouteReady.mockResolvedValue({ ok: true });
     commandAuthMocks.resolveCommandArgMenu.mockClear();
-    sessionMocks.loadSessionStore.mockClear().mockReturnValue({});
+    sessionMocks.sessionStore.value = {};
+    sessionMocks.getSessionEntry.mockClear();
+    sessionMocks.getSessionEntry.mockImplementation(
+      ({ sessionKey }: { sessionKey: string }) => sessionMocks.sessionStore.value[sessionKey],
+    );
+    sessionMocks.listSessionEntries.mockClear();
+    sessionMocks.listSessionEntries.mockImplementation(() =>
+      Object.entries(sessionMocks.sessionStore.value).map(([sessionKey, entry]) => ({
+        sessionKey,
+        entry,
+      })),
+    );
     sessionMocks.recordSessionMetaFromInbound.mockClear().mockResolvedValue(undefined);
     sessionMocks.resolveAndPersistSessionFile.mockClear().mockImplementation(async (params) => {
       const sessionFile =
@@ -479,7 +497,13 @@ describe("registerTelegramNativeCommands — session metadata", () => {
         },
       };
     });
-    sessionMocks.resolveStorePath.mockClear().mockReturnValue("/tmp/openclaw-sessions.json");
+    sessionMocks.resolveSessionTranscriptPath
+      .mockClear()
+      .mockImplementation((sessionId: string, _agentId?: string, threadId?: string | number) =>
+        threadId === undefined
+          ? `/tmp/openclaw-sessions/${sessionId}.jsonl`
+          : `/tmp/openclaw-sessions/${sessionId}-topic-${threadId}.jsonl`,
+      );
     pluginRuntimeMocks.executePluginCommand.mockClear().mockResolvedValue({ text: "ok" });
     pluginRuntimeMocks.matchPluginCommand.mockClear().mockReturnValue(null);
     replyMocks.dispatchReplyWithBufferedBlockDispatcher
@@ -524,7 +548,7 @@ describe("registerTelegramNativeCommands — session metadata", () => {
         },
       },
     } as OpenClawConfig;
-    sessionMocks.loadSessionStore.mockReturnValue({
+    sessionMocks.sessionStore.value = {
       "agent:main:main": {
         providerOverride: "anthropic",
         modelOverride: "claude-opus-4-7",
@@ -532,7 +556,7 @@ describe("registerTelegramNativeCommands — session metadata", () => {
         thinkingLevel: "high",
         updatedAt: 0,
       },
-    });
+    };
 
     const { handler, sendMessage } = registerAndResolveCommandHandler({
       commandName: "think",
@@ -550,7 +574,10 @@ describe("registerTelegramNativeCommands — session metadata", () => {
         model: "claude-opus-4-7",
       }),
     );
-    expect(sessionMocks.loadSessionStore).toHaveBeenCalledWith("/tmp/openclaw-sessions.json");
+    expect(sessionMocks.getSessionEntry).toHaveBeenCalledWith({
+      agentId: "main",
+      sessionKey: "agent:main:main",
+    });
     expect(sendMessage).toHaveBeenCalledWith(
       100,
       expect.stringContaining("Current thinking level: high.\nChoose level for /think."),
@@ -561,14 +588,14 @@ describe("registerTelegramNativeCommands — session metadata", () => {
 
   it("inherits the parent session model when building DM thread native argument menus", async () => {
     const cfg: OpenClawConfig = {};
-    sessionMocks.loadSessionStore.mockReturnValue({
+    sessionMocks.sessionStore.value = {
       "agent:main:main": {
         providerOverride: "anthropic",
         modelOverride: "claude-opus-4-7",
         modelOverrideSource: "user",
         updatedAt: 0,
       },
-    });
+    };
 
     const { handler, sendMessage } = registerAndResolveCommandHandler({
       commandName: "think",
@@ -603,7 +630,7 @@ describe("registerTelegramNativeCommands — session metadata", () => {
         },
       },
     } as OpenClawConfig;
-    sessionMocks.loadSessionStore.mockReturnValue({
+    sessionMocks.sessionStore.value = {
       "agent:main:main": {
         providerOverride: "anthropic",
         modelOverride: "claude-opus-4-7",
@@ -612,7 +639,7 @@ describe("registerTelegramNativeCommands — session metadata", () => {
         model: "claude-opus-4-7",
         updatedAt: 0,
       },
-    });
+    };
 
     const { handler, sendMessage } = registerAndResolveCommandHandler({
       commandName: "think",
@@ -651,14 +678,14 @@ describe("registerTelegramNativeCommands — session metadata", () => {
         },
       },
     } as OpenClawConfig;
-    sessionMocks.loadSessionStore.mockReturnValue({
+    sessionMocks.sessionStore.value = {
       "agent:main:main": {
         providerOverride: "anthropic",
         modelOverride: "claude-opus-4-7",
         modelOverrideSource: "user",
         updatedAt: 0,
       },
-    });
+    };
 
     const { handler, sendMessage } = registerAndResolveCommandHandler({
       commandName: "think",
@@ -695,7 +722,7 @@ describe("registerTelegramNativeCommands — session metadata", () => {
         ],
       },
     } as OpenClawConfig;
-    sessionMocks.loadSessionStore.mockReturnValue({});
+    sessionMocks.sessionStore.value = {};
 
     const { handler, sendMessage } = registerAndResolveCommandHandler({
       commandName: "think",
@@ -720,7 +747,8 @@ describe("registerTelegramNativeCommands — session metadata", () => {
     });
     await handler(createTelegramPrivateCommandContext({ match: "high" }));
 
-    expect(sessionMocks.loadSessionStore).not.toHaveBeenCalled();
+    expect(sessionMocks.getSessionEntry).not.toHaveBeenCalled();
+    expect(sessionMocks.listSessionEntries).not.toHaveBeenCalled();
     expect(replyMocks.dispatchReplyWithBufferedBlockDispatcher).toHaveBeenCalledTimes(1);
   });
 
@@ -1139,13 +1167,12 @@ describe("registerTelegramNativeCommands — session metadata", () => {
   });
 
   it("passes a persisted topic session file to plugin commands", async () => {
-    sessionMocks.resolveStorePath.mockReturnValue("/tmp/openclaw-sessions/sessions.json");
-    sessionMocks.loadSessionStore.mockReturnValue({
+    sessionMocks.sessionStore.value = {
       "agent:main:telegram:group:-1001234567890:topic:42": {
         sessionId: "sess-topic",
         updatedAt: 1,
       },
-    });
+    };
 
     const { handler } = registerAndResolveCommandHandler({
       commandName: "codex",
@@ -1180,8 +1207,6 @@ describe("registerTelegramNativeCommands — session metadata", () => {
       expect.objectContaining({
         sessionId: "sess-topic",
         sessionKey: "agent:main:telegram:group:-1001234567890:topic:42",
-        storePath: "/tmp/openclaw-sessions/sessions.json",
-        sessionsDir: "/tmp/openclaw-sessions",
         fallbackSessionFile: path.resolve("/tmp/openclaw-sessions", "sess-topic-topic-42.jsonl"),
       }),
     );

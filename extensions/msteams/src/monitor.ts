@@ -7,12 +7,12 @@ import {
   type OpenClawConfig,
   type RuntimeEnv,
 } from "../runtime-api.js";
-import { createMSTeamsConversationStoreFs } from "./conversation-store-fs.js";
+import { createMSTeamsConversationStoreState } from "./conversation-store-state.js";
 import type { MSTeamsConversationStore } from "./conversation-store.js";
 import { formatUnknownError } from "./errors.js";
 import type { MSTeamsAdapter } from "./messenger.js";
 import { registerMSTeamsHandlers, type MSTeamsActivityHandler } from "./monitor-handler.js";
-import { createMSTeamsPollStoreFs, type MSTeamsPollStore } from "./polls.js";
+import { createMSTeamsPollStoreState, type MSTeamsPollStore } from "./polls.js";
 import {
   resolveMSTeamsChannelAllowlist,
   resolveMSTeamsUserAllowlist,
@@ -24,7 +24,7 @@ import {
   createMSTeamsTokenProvider,
   loadMSTeamsSdkWithAuth,
 } from "./sdk.js";
-import { createMSTeamsSsoTokenStoreFs } from "./sso-token-store.js";
+import { createMSTeamsSsoTokenStore } from "./sso-token-store.js";
 import type { MSTeamsSsoDeps } from "./sso.js";
 import { resolveMSTeamsCredentials } from "./token.js";
 import { applyMSTeamsWebhookTimeouts } from "./webhook-timeouts.js";
@@ -223,8 +223,8 @@ export async function monitorMSTeamsProvider(
     typeof agentDefaults?.mediaMaxMb === "number" && agentDefaults.mediaMaxMb > 0
       ? Math.floor(agentDefaults.mediaMaxMb * MB)
       : 8 * MB;
-  const conversationStore = opts.conversationStore ?? createMSTeamsConversationStoreFs();
-  const pollStore = opts.pollStore ?? createMSTeamsPollStoreFs();
+  const conversationStore = opts.conversationStore ?? createMSTeamsConversationStoreState();
+  const pollStore = opts.pollStore ?? createMSTeamsPollStoreState();
 
   log.info(`starting provider (port ${port})`);
 
@@ -246,7 +246,7 @@ export async function monitorMSTeamsProvider(
   if (msteamsCfg.sso?.enabled && msteamsCfg.sso.connectionName) {
     ssoDeps = {
       tokenProvider,
-      tokenStore: createMSTeamsSsoTokenStoreFs(),
+      tokenStore: createMSTeamsSsoTokenStore(),
       connectionName: msteamsCfg.sso.connectionName,
     };
     log.debug?.("msteams sso enabled", {

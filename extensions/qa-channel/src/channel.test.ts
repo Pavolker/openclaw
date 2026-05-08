@@ -55,9 +55,6 @@ function createMockQaRuntime(params?: {
         },
       },
       session: {
-        resolveStorePath(_store: string | undefined, { agentId }: { agentId: string }) {
-          return agentId;
-        },
         readSessionUpdatedAt({ sessionKey }: { sessionKey: string }) {
           return sessionUpdatedAt.get(sessionKey);
         },

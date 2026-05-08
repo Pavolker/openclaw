@@ -1,10 +1,20 @@
-import fs from "node:fs";
+import {
+  ensureAuthProfileStore,
+  resolveAuthProfileOrder,
+  resolveProfileUnusableUntilForDisplay,
+} from "../../../agents/auth-profiles.js";
+import { evaluateStoredCredentialEligibility } from "../../../agents/auth-profiles/credential-state.js";
 import { AGENT_MODEL_CONFIG_KEYS } from "../../../config/model-refs.js";
-import { loadSessionStore, updateSessionStore } from "../../../config/sessions/store.js";
-import { resolveAllAgentSessionStoreTargetsSync } from "../../../config/sessions/targets.js";
+import { listSessionEntries, upsertSessionEntry } from "../../../config/sessions/store.js";
+import { resolveAllAgentSessionDatabaseTargetsSync } from "../../../config/sessions/targets.js";
 import type { SessionEntry } from "../../../config/sessions/types.js";
 import type { AgentRuntimePolicyConfig } from "../../../config/types.agents-shared.js";
 import type { OpenClawConfig } from "../../../config/types.openclaw.js";
+import {
+  getInstalledPluginRecord,
+  isInstalledPluginEnabled,
+  loadInstalledPluginIndex,
+} from "../../../plugins/installed-plugin-index.js";
 
 type CodexRouteHit = {
   path: string;
@@ -67,7 +77,7 @@ function resolveRuntime(params: {
     normalizeString(params.env?.OPENCLAW_AGENT_RUNTIME) ??
     normalizeString(params.agentRuntime?.id) ??
     normalizeString(params.defaultsRuntime?.id) ??
-    "codex"
+    "pi"
   );
 }
 
@@ -550,13 +560,47 @@ function rewriteConfigModelRefs(params: {
   };
 }
 
+function hasUsableCodexOAuthProfile(cfg: OpenClawConfig): boolean {
+  try {
+    const store = ensureAuthProfileStore(undefined, { allowKeychainPrompt: false, config: cfg });
+    const now = Date.now();
+    return resolveAuthProfileOrder({ cfg, store, provider: "openai-codex" }).some((profileId) => {
+      const credential = store.profiles[profileId];
+      if (!credential || credential.type !== "oauth") {
+        return false;
+      }
+      const unusableUntil = resolveProfileUnusableUntilForDisplay(store, profileId);
+      if (unusableUntil && now < unusableUntil) {
+        return false;
+      }
+      return evaluateStoredCredentialEligibility({ credential, now }).eligible;
+    });
+  } catch {
+    return false;
+  }
+}
+
+function isCodexPluginInstalledAndEnabled(cfg: OpenClawConfig, env?: NodeJS.ProcessEnv): boolean {
+  const index = loadInstalledPluginIndex({ config: cfg, env });
+  const record = getInstalledPluginRecord(index, "codex");
+  if (!record || !record.startup.agentHarnesses.includes("codex")) {
+    return false;
+  }
+  return isInstalledPluginEnabled(index, "codex", cfg);
+}
+
 function resolveCodexRepairRuntime(params: {
   cfg: OpenClawConfig;
   env?: NodeJS.ProcessEnv;
   codexRuntimeReady?: boolean;
 }): CodexRepairRuntime {
-  void params;
-  return "codex";
+  if (params.codexRuntimeReady !== undefined) {
+    return params.codexRuntimeReady ? "codex" : "pi";
+  }
+  return isCodexPluginInstalledAndEnabled(params.cfg, params.env) &&
+    hasUsableCodexOAuthProfile(params.cfg)
+    ? "codex"
+    : "pi";
 }
 
 function formatCodexRouteChange(hit: CodexRouteHit, runtime: CodexRepairRuntime): string {
@@ -581,7 +625,7 @@ export function collectCodexRouteWarnings(params: {
             hit.runtime ? `; current runtime is "${hit.runtime}"` : ""
           }.`,
       ),
-      '- Run `openclaw doctor --fix`: it rewrites configured model refs and stale sessions to `openai/*` with `agentRuntime.id: "codex"`.',
+      '- Run `openclaw doctor --fix`: it rewrites configured model refs and stale sessions; primary routes select `agentRuntime.id: "codex"` only when Codex is installed, enabled, and has usable OAuth, otherwise they select OpenClaw PI.',
     ].join("\n"),
   ];
 }
@@ -701,10 +745,16 @@ export function repairCodexSessionStoreRoutes(params: {
     const changedModelRoute = changedRuntimeModelRoute || changedOverrideModelRoute;
     const changedFallbackNotice = clearStaleCodexFallbackNotice(entry);
     const changedAuthOverride = clearStaleCodexAuthOverride(entry, params.runtime);
-    if (!changedModelRoute && !changedFallbackNotice && !changedAuthOverride) {
+    const shouldRepinCodexHarness = entry.agentHarnessId === "codex" && params.runtime !== "codex";
+    if (
+      !changedModelRoute &&
+      !changedFallbackNotice &&
+      !changedAuthOverride &&
+      !shouldRepinCodexHarness
+    ) {
       continue;
     }
-    if (changedModelRoute) {
+    if (changedModelRoute || shouldRepinCodexHarness) {
       entry.agentHarnessId = params.runtime;
       entry.agentRuntimeOverride = params.runtime;
     }
@@ -721,7 +771,6 @@ function scanCodexSessionStoreRoutes(
   store: Record<string, SessionEntry>,
   runtime: CodexRepairRuntime,
 ): string[] {
-  void runtime;
   return Object.entries(store).flatMap(([sessionKey, entry]) => {
     if (!entry) {
       return [];
@@ -732,7 +781,9 @@ function scanCodexSessionStoreRoutes(
       isOpenAICodexModelRef(entry.model) ||
       isOpenAICodexModelRef(entry.modelOverride) ||
       isOpenAICodexModelRef(entry.fallbackNoticeSelectedModel) ||
-      isOpenAICodexModelRef(entry.fallbackNoticeActiveModel);
+      isOpenAICodexModelRef(entry.fallbackNoticeActiveModel) ||
+      (runtime !== "codex" && entry.authProfileOverride?.startsWith("openai-codex:") === true) ||
+      (runtime !== "codex" && entry.agentHarnessId === "codex");
     return hasLegacyRoute ? [sessionKey] : [];
   });
 }
@@ -743,9 +794,9 @@ export async function maybeRepairCodexSessionRoutes(params: {
   shouldRepair: boolean;
   codexRuntimeReady?: boolean;
 }): Promise<CodexSessionRouteRepairSummary> {
-  const targets = resolveAllAgentSessionStoreTargetsSync(params.cfg, {
+  const targets = resolveAllAgentSessionDatabaseTargetsSync(params.cfg, {
     env: params.env ?? process.env,
-  }).filter((target) => fs.existsSync(target.storePath));
+  });
   if (targets.length === 0) {
     return {
       scannedStores: 0,
@@ -762,7 +813,12 @@ export async function maybeRepairCodexSessionRoutes(params: {
       codexRuntimeReady: params.codexRuntimeReady,
     });
     const stale = targets.flatMap((target) => {
-      const sessionKeys = scanCodexSessionStoreRoutes(loadSessionStore(target.storePath), runtime);
+      const store = Object.fromEntries(
+        listSessionEntries({ agentId: target.agentId, env: params.env }).map(
+          ({ sessionKey, entry }) => [sessionKey, entry],
+        ),
+      );
+      const sessionKeys = scanCodexSessionStoreRoutes(store, runtime);
       return sessionKeys.map((sessionKey) => `${target.agentId}:${sessionKey}`);
     });
     return {
@@ -790,18 +846,29 @@ export async function maybeRepairCodexSessionRoutes(params: {
   let repairedStores = 0;
   let repairedSessions = 0;
   for (const target of targets) {
-    const staleSessionKeys = scanCodexSessionStoreRoutes(
-      loadSessionStore(target.storePath),
-      runtime,
+    const store = Object.fromEntries(
+      listSessionEntries({ agentId: target.agentId, env: params.env }).map(
+        ({ sessionKey, entry }) => [sessionKey, entry],
+      ),
     );
+    const staleSessionKeys = scanCodexSessionStoreRoutes(store, runtime);
     if (staleSessionKeys.length === 0) {
       continue;
     }
-    const result = await updateSessionStore(target.storePath, (store) =>
-      repairCodexSessionStoreRoutes({ store, runtime }),
-    );
+    const result = repairCodexSessionStoreRoutes({ store, runtime });
     if (!result.changed) {
       continue;
+    }
+    for (const sessionKey of result.sessionKeys) {
+      const entry = store[sessionKey];
+      if (entry) {
+        upsertSessionEntry({
+          agentId: target.agentId,
+          env: params.env,
+          sessionKey,
+          entry,
+        });
+      }
     }
     repairedStores += 1;
     repairedSessions += result.sessionKeys.length;

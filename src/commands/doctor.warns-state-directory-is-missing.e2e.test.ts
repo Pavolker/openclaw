@@ -88,7 +88,7 @@ describe("doctor command", () => {
     });
   });
 
-  it("warns when the state directory is missing", async () => {
+  it("initializes SQLite state when the state directory is missing", async () => {
     mockDoctorConfigSnapshot();
 
     const missingDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-missing-state-"));
@@ -102,8 +102,8 @@ describe("doctor command", () => {
     const stateNote = terminalNoteMock.mock.calls.find(([message]) =>
       String(message).includes("state directory missing"),
     );
-    expect(stateNote).toBeTruthy();
-    expect(String(stateNote?.[0])).toContain("CRITICAL");
+    expect(stateNote).toBeUndefined();
+    expect(fs.existsSync(path.join(missingDir, "state", "openclaw.sqlite"))).toBe(true);
   });
 
   it("routes browser readiness through health contributions and degrades gracefully when browser facade is unavailable", async () => {

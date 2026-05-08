@@ -22,11 +22,10 @@ import {
   updateTaskNotifyPolicyForOwner,
 } from "../../tasks/task-owner-access.js";
 import { findActiveSessionTask } from "../session-async-task-status.js";
-import type { SessionWriteLockAcquireTimeoutConfig } from "../session-write-lock.js";
 import { resolveSessionLane } from "./lanes.js";
 import { log } from "./logger.js";
 import {
-  rewriteTranscriptEntriesInSessionFile,
+  rewriteTranscriptEntriesInSqliteTranscript,
   rewriteTranscriptEntriesInSessionManager,
 } from "./transcript-rewrite.js";
 
@@ -46,7 +45,7 @@ type DeferredTurnMaintenanceScheduleParams = {
   sessionFile: string;
   sessionManager?: Parameters<typeof rewriteTranscriptEntriesInSessionManager>[0]["sessionManager"];
   runtimeContext?: ContextEngineRuntimeContext;
-  config?: SessionWriteLockAcquireTimeoutConfig;
+  config?: unknown;
 };
 
 type DeferredTurnMaintenanceRunState = {
@@ -277,7 +276,7 @@ export function buildContextEngineMaintenanceRuntimeContext(params: {
   runtimeContext?: ContextEngineRuntimeContext;
   allowDeferredCompactionExecution?: boolean;
   deferTranscriptRewriteToSessionLane?: boolean;
-  config?: SessionWriteLockAcquireTimeoutConfig;
+  config?: unknown;
 }): ContextEngineRuntimeContext {
   return {
     ...params.runtimeContext,
@@ -290,8 +289,8 @@ export function buildContextEngineMaintenanceRuntimeContext(params: {
         });
       }
       const rewriteTranscriptEntriesInFile = async () =>
-        await rewriteTranscriptEntriesInSessionFile({
-          sessionFile: params.sessionFile,
+        await rewriteTranscriptEntriesInSqliteTranscript({
+          transcriptPath: params.sessionFile,
           sessionId: params.sessionId,
           sessionKey: params.sessionKey,
           config: params.config,
@@ -318,7 +317,7 @@ async function executeContextEngineMaintenance(params: {
   sessionManager?: Parameters<typeof rewriteTranscriptEntriesInSessionManager>[0]["sessionManager"];
   runtimeContext?: ContextEngineRuntimeContext;
   executionMode: "foreground" | "background";
-  config?: SessionWriteLockAcquireTimeoutConfig;
+  config?: unknown;
 }): Promise<ContextEngineMaintenanceResult | undefined> {
   if (typeof params.contextEngine.maintain !== "function") {
     return undefined;
@@ -356,7 +355,7 @@ async function runDeferredTurnMaintenanceWorker(params: {
   sessionManager?: Parameters<typeof rewriteTranscriptEntriesInSessionManager>[0]["sessionManager"];
   runtimeContext?: ContextEngineRuntimeContext;
   runId: string;
-  config?: SessionWriteLockAcquireTimeoutConfig;
+  config?: unknown;
 }): Promise<void> {
   let surfacedUserNotice = false;
   let longRunningTimer: ReturnType<typeof setTimeout> | null = null;
@@ -615,7 +614,7 @@ export async function runContextEngineMaintenance(params: {
   sessionManager?: Parameters<typeof rewriteTranscriptEntriesInSessionManager>[0]["sessionManager"];
   runtimeContext?: ContextEngineRuntimeContext;
   executionMode?: "foreground" | "background";
-  config?: SessionWriteLockAcquireTimeoutConfig;
+  config?: unknown;
 }): Promise<ContextEngineMaintenanceResult | undefined> {
   if (typeof params.contextEngine?.maintain !== "function") {
     return undefined;

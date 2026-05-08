@@ -18,6 +18,7 @@ import {
 } from "./config.js";
 import type { CoreAgentDeps, CoreConfig } from "./core-bridge.js";
 import { CallManager } from "./manager.js";
+import { createVoiceCallRecordStore } from "./manager/store.js";
 import type { VoiceCallProvider } from "./providers/base.js";
 import type { TwilioProvider } from "./providers/twilio.js";
 import { buildRealtimeVoiceInstructions } from "./realtime-agent-context.js";
@@ -272,6 +273,7 @@ export async function createVoiceCallRuntime(params: {
   fullConfig?: OpenClawConfig;
   agentRuntime: CoreAgentDeps;
   ttsRuntime?: TelephonyTtsRuntime;
+  openKeyedStore?: import("openclaw/plugin-sdk/runtime-store").PluginRuntime["state"]["openKeyedStore"];
   logger?: Logger;
 }): Promise<VoiceCallRuntime> {
   const { config: rawConfig, coreConfig, fullConfig, agentRuntime, ttsRuntime, logger } = params;
@@ -301,7 +303,11 @@ export async function createVoiceCallRuntime(params: {
   }
 
   const provider = await resolveProvider(config);
-  const manager = new CallManager(config);
+  const manager = new CallManager(config, {
+    callStore: params.openKeyedStore
+      ? createVoiceCallRecordStore(params.openKeyedStore)
+      : undefined,
+  });
   const realtimeProvider = config.realtime.enabled
     ? await resolveRealtimeProvider({
         config,

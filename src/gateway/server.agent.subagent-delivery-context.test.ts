@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import type { ChannelPlugin } from "../channels/plugins/types.js";
+import { getSessionEntry } from "../config/sessions.js";
 import { createChannelTestPluginBase } from "../test-utils/channel-plugins.js";
 import { setRegistry } from "./server.agent.gateway-server-agent.mocks.js";
 import { createRegistry } from "./server.e2e-registry-helpers.js";
@@ -12,15 +13,14 @@ import {
   rpcReq,
   startServerWithClient,
   testState,
-  writeSessionStore,
+  seedGatewaySessionEntries,
 } from "./test-helpers.js";
 
 installGatewayTestHooks({ scope: "suite" });
 
 let server: Awaited<ReturnType<typeof startServerWithClient>>["server"];
 let ws: Awaited<ReturnType<typeof startServerWithClient>>["ws"];
-let sessionStoreDir: string;
-let sessionStorePath: string;
+let sessionStateDir: string;
 
 const createStubChannelPlugin = (params: {
   id: ChannelPlugin["id"];
@@ -57,29 +57,19 @@ beforeAll(async () => {
   server = started.server;
   ws = started.ws;
   await connectOk(ws);
-  sessionStoreDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-gw-subagent-delivery-ctx-"));
-  sessionStorePath = path.join(sessionStoreDir, "sessions.json");
+  sessionStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-gw-subagent-delivery-ctx-"));
 });
 
 afterAll(async () => {
   ws.close();
   await server.close();
-  await fs.rm(sessionStoreDir, { recursive: true, force: true });
+  await fs.rm(sessionStateDir, { recursive: true, force: true });
 });
-
-type StoredEntry = {
-  deliveryContext?: { channel?: string; to?: string; threadId?: string; accountId?: string };
-  lastChannel?: string;
-  lastTo?: string;
-  lastThreadId?: string | number;
-  lastAccountId?: string;
-};
 
 describe("subagent session deliveryContext from spawn request params", () => {
   test("new subagent session inherits deliveryContext from request channel/to/threadId", async () => {
     setRegistry(defaultRegistry);
-    testState.sessionStorePath = sessionStorePath;
-    await writeSessionStore({ entries: {} });
+    await seedGatewaySessionEntries({ entries: {} });
 
     const res = await rpcReq(ws, "agent", {
       message: "[Subagent Task]: analyze data",
@@ -93,11 +83,10 @@ describe("subagent session deliveryContext from spawn request params", () => {
     });
     expect(res.ok).toBe(true);
 
-    const stored = JSON.parse(await fs.readFile(sessionStorePath, "utf-8")) as Record<
-      string,
-      StoredEntry
-    >;
-    const entry = stored["agent:main:subagent:test-delivery-ctx"];
+    const entry = getSessionEntry({
+      agentId: "main",
+      sessionKey: "agent:main:subagent:test-delivery-ctx",
+    });
     expect(entry).toBeDefined();
     expect(entry?.deliveryContext?.channel).toBe("slack");
     expect(entry?.deliveryContext?.to).toBe("channel:C0AF8TW48UQ");
@@ -109,8 +98,7 @@ describe("subagent session deliveryContext from spawn request params", () => {
 
   test("existing session deliveryContext is NOT overwritten by request params", async () => {
     setRegistry(defaultRegistry);
-    testState.sessionStorePath = sessionStorePath;
-    await writeSessionStore({
+    await seedGatewaySessionEntries({
       entries: {
         "agent:main:subagent:existing-ctx": {
           sessionId: "sess-existing",
@@ -140,11 +128,10 @@ describe("subagent session deliveryContext from spawn request params", () => {
     });
     expect(res.ok).toBe(true);
 
-    const stored = JSON.parse(await fs.readFile(sessionStorePath, "utf-8")) as Record<
-      string,
-      StoredEntry
-    >;
-    const entry = stored["agent:main:subagent:existing-ctx"];
+    const entry = getSessionEntry({
+      agentId: "main",
+      sessionKey: "agent:main:subagent:existing-ctx",
+    });
     expect(entry).toBeDefined();
     // The ORIGINAL deliveryContext should be preserved (primary wins in merge).
     expect(entry?.deliveryContext?.to).toBe("user:U09U1LV7JDN");
@@ -158,8 +145,7 @@ describe("subagent session deliveryContext from spawn request params", () => {
     // The sessions.patch creates a partial entry without deliveryContext.
     // The agent handler must seed deliveryContext from the request params.
     setRegistry(defaultRegistry);
-    testState.sessionStorePath = sessionStorePath;
-    await writeSessionStore({
+    await seedGatewaySessionEntries({
       entries: {
         "agent:main:subagent:pre-patched": {
           sessionId: "sess-pre-patched",
@@ -182,11 +168,10 @@ describe("subagent session deliveryContext from spawn request params", () => {
     });
     expect(res.ok).toBe(true);
 
-    const stored = JSON.parse(await fs.readFile(sessionStorePath, "utf-8")) as Record<
-      string,
-      StoredEntry
-    >;
-    const entry = stored["agent:main:subagent:pre-patched"];
+    const entry = getSessionEntry({
+      agentId: "main",
+      sessionKey: "agent:main:subagent:pre-patched",
+    });
     expect(entry).toBeDefined();
     expect(entry?.deliveryContext?.channel).toBe("slack");
     expect(entry?.deliveryContext?.to).toBe("user:U07FDR83W6N");
@@ -197,8 +182,7 @@ describe("subagent session deliveryContext from spawn request params", () => {
 
   test("request without to/threadId does not inject empty values", async () => {
     setRegistry(defaultRegistry);
-    testState.sessionStorePath = sessionStorePath;
-    await writeSessionStore({ entries: {} });
+    await seedGatewaySessionEntries({ entries: {} });
 
     const res = await rpcReq(ws, "agent", {
       message: "internal task",
@@ -209,11 +193,10 @@ describe("subagent session deliveryContext from spawn request params", () => {
     });
     expect(res.ok).toBe(true);
 
-    const stored = JSON.parse(await fs.readFile(sessionStorePath, "utf-8")) as Record<
-      string,
-      StoredEntry
-    >;
-    const entry = stored["agent:main:subagent:no-routing"];
+    const entry = getSessionEntry({
+      agentId: "main",
+      sessionKey: "agent:main:subagent:no-routing",
+    });
     expect(entry).toBeDefined();
     expect(entry?.deliveryContext?.channel).toBe("slack");
     expect(entry?.deliveryContext?.to).toBeUndefined();

@@ -55,11 +55,10 @@ import { pruneStickerMediaFromContext } from "./bot-message-dispatch.media.js";
 import {
   generateTopicLabel,
   getAgentScopedMediaLocalRoots,
-  loadSessionStore,
+  getSessionEntry,
   resolveAutoTopicLabelConfig,
   resolveChunkMode,
   resolveMarkdownTableMode,
-  resolveSessionStoreEntry,
 } from "./bot-message-dispatch.runtime.js";
 import type { TelegramBotOptions } from "./bot.types.js";
 import { deliverReplies, emitInternalMessageSentHook } from "./bot/delivery.js";
@@ -208,19 +207,16 @@ export function resetTelegramReplyFenceForTests(): void {
 }
 
 function resolveTelegramReasoningLevel(params: {
-  cfg: OpenClawConfig;
   sessionKey?: string;
   agentId: string;
   telegramDeps: TelegramBotDeps;
 }): TelegramReasoningLevel {
-  const { cfg, sessionKey, agentId, telegramDeps } = params;
+  const { sessionKey, agentId, telegramDeps } = params;
   if (!sessionKey) {
     return "off";
   }
   try {
-    const storePath = telegramDeps.resolveStorePath(cfg.session?.store, { agentId });
-    const store = (telegramDeps.loadSessionStore ?? loadSessionStore)(storePath);
-    const entry = resolveSessionStoreEntry({ store, sessionKey }).existing;
+    const entry = (telegramDeps.getSessionEntry ?? getSessionEntry)({ agentId, sessionKey });
     const level = entry?.reasoningLevel;
     if (level === "on" || level === "stream") {
       return level;
@@ -359,7 +355,6 @@ export const dispatchTelegramMessage = async ({
     resolveChannelStreamingBlockEnabled(telegramCfg) ??
     cfg.agents?.defaults?.blockStreamingDefault === "on";
   const resolvedReasoningLevel = resolveTelegramReasoningLevel({
-    cfg,
     sessionKey: ctxPayload.SessionKey,
     agentId: route.agentId,
     telegramDeps,
@@ -937,19 +932,18 @@ export const dispatchTelegramMessage = async ({
 
     if (isDmTopic) {
       try {
-        const storePath = telegramDeps.resolveStorePath(cfg.session?.store, {
-          agentId: route.agentId,
-        });
-        const store = (telegramDeps.loadSessionStore ?? loadSessionStore)(storePath);
         const sessionKey = ctxPayload.SessionKey;
         if (sessionKey) {
-          const entry = resolveSessionStoreEntry({ store, sessionKey }).existing;
+          const entry = (telegramDeps.getSessionEntry ?? getSessionEntry)({
+            agentId: route.agentId,
+            sessionKey,
+          });
           isFirstTurnInSession = !entry?.systemSent;
         } else {
           logVerbose("auto-topic-label: SessionKey is absent, skipping first-turn detection");
         }
       } catch (err) {
-        logVerbose(`auto-topic-label: session store error: ${formatErrorMessage(err)}`);
+        logVerbose(`auto-topic-label: session row read error: ${formatErrorMessage(err)}`);
       }
     }
 
@@ -994,8 +988,8 @@ export const dispatchTelegramMessage = async ({
           resolveTurn: () => ({
             channel: "telegram",
             accountId: route.accountId,
+            agentId: route.agentId,
             routeSessionKey: route.sessionKey,
-            storePath: context.turn.storePath,
             ctxPayload,
             recordInboundSession: context.turn.recordInboundSession,
             record: context.turn.record,

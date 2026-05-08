@@ -66,6 +66,40 @@ describe("codex app-server session binding", () => {
     });
   });
 
+  it("keys new bindings by OpenClaw session key instead of transcript path", async () => {
+    const sessionFile = path.join(tempDir, "session.json");
+    const sessionKey = "agent:main:codex-thread";
+    await writeCodexAppServerBinding(
+      { sessionKey, sessionFile },
+      {
+        threadId: "thread-session-key",
+        cwd: tempDir,
+      },
+    );
+
+    await expect(readCodexAppServerBinding({ sessionKey })).resolves.toMatchObject({
+      threadId: "thread-session-key",
+      sessionKey,
+      sessionFile,
+    });
+    await expect(readCodexAppServerBinding(sessionFile)).resolves.toBeUndefined();
+  });
+
+  it("can read legacy transcript-path keyed bindings through the session identity", async () => {
+    const sessionFile = path.join(tempDir, "session.json");
+    const sessionKey = "agent:main:legacy-codex-thread";
+    await writeCodexAppServerBinding(sessionFile, {
+      threadId: "thread-legacy",
+      cwd: tempDir,
+    });
+
+    await expect(readCodexAppServerBinding({ sessionKey, sessionFile })).resolves.toMatchObject({
+      threadId: "thread-legacy",
+      sessionKey,
+      sessionFile,
+    });
+  });
+
   it("does not persist public OpenAI as the provider for Codex-native auth bindings", async () => {
     const sessionFile = path.join(tempDir, "session.json");
     await writeCodexAppServerBinding(

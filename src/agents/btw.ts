@@ -15,6 +15,7 @@ import {
 } from "./image-sanitization.js";
 import { getApiKeyForModel, requireApiKey } from "./model-auth.js";
 import { ensureOpenClawModelsJson } from "./models-config.js";
+import { listOpenAIAuthProfileProvidersForAgentRuntime } from "./openai-codex-routing.js";
 import {
   streamSimple,
   type Api,
@@ -222,7 +223,6 @@ async function resolveRuntimeModel(params: {
   sessionEntry?: StoredSessionEntry;
   sessionStore?: Record<string, StoredSessionEntry>;
   sessionKey?: string;
-  storePath?: string;
   isNewSession: boolean;
 }): Promise<{
   model: Model<Api>;
@@ -262,7 +262,6 @@ async function resolveRuntimeModel(params: {
     sessionEntry: params.sessionEntry,
     sessionStore: params.sessionStore,
     sessionKey: params.sessionKey,
-    storePath: params.storePath,
     isNewSession: params.isNewSession,
   });
   return {
@@ -281,7 +280,6 @@ type RunBtwSideQuestionParams = {
   sessionEntry: StoredSessionEntry;
   sessionStore?: Record<string, StoredSessionEntry>;
   sessionKey?: string;
-  storePath?: string;
   resolvedThinkLevel?: ThinkLevel;
   resolvedReasoningLevel: ReasoningLevel;
   blockReplyChunking?: BlockReplyChunking;
@@ -302,7 +300,6 @@ export async function runBtwSideQuestion(
     sessionId,
     sessionEntry: params.sessionEntry,
     sessionKey: params.sessionKey,
-    storePath: params.storePath,
   });
   if (!sessionFile) {
     throw new Error("No active session transcript.");
@@ -350,7 +347,6 @@ export async function runBtwSideQuestion(
     sessionEntry: params.sessionEntry,
     sessionStore: params.sessionStore,
     sessionKey: params.sessionKey,
-    storePath: params.storePath,
     isNewSession: params.isNewSession,
   });
   const apiKeyInfo = await getApiKeyForModel({

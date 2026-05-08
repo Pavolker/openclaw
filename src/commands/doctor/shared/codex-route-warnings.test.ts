@@ -67,7 +67,7 @@ describe("collectCodexRouteWarnings", () => {
     expect(warnings).toEqual([expect.stringContaining("Legacy `openai-codex/*`")]);
     expect(warnings[0]).toContain("agents.defaults.model");
     expect(warnings[0]).toContain("openai/gpt-5.5");
-    expect(warnings[0]).toContain('runtime is "codex"');
+    expect(warnings[0]).toContain('runtime is "pi"');
     expect(warnings[0]).toContain('agentRuntime.id: "codex"');
   });
 
@@ -223,7 +223,7 @@ describe("collectCodexRouteWarnings", () => {
     expect(result.cfg.messages?.tts?.summaryModel).toBe("openai/gpt-5.4-mini");
   });
 
-  it("repairs legacy routes to Codex even when OAuth readiness cannot be proven", () => {
+  it("repairs legacy routes to PI when Codex readiness cannot be proven", () => {
     const result = maybeRepairCodexRoutes({
       cfg: {
         agents: {
@@ -236,8 +236,8 @@ describe("collectCodexRouteWarnings", () => {
     });
 
     expect(result.cfg.agents?.defaults?.model).toBe("openai/gpt-5.5");
-    expect(result.cfg.agents?.defaults?.agentRuntime).toEqual({ id: "codex" });
-    expect(result.changes.join("\n")).toContain('set agentRuntime.id to "codex"');
+    expect(result.cfg.agents?.defaults?.agentRuntime).toEqual({ id: "pi" });
+    expect(result.changes.join("\n")).toContain('set agentRuntime.id to "pi"');
   });
 
   it("repairs persisted session route pins to Codex and preserves Codex auth pins", () => {
@@ -356,7 +356,7 @@ describe("collectCodexRouteWarnings", () => {
     });
   });
 
-  it("repairs legacy routes to Codex without probing OAuth readiness", () => {
+  it("repairs legacy routes to Codex without probing OAuth readiness when readiness is injected", () => {
     const store = {
       profiles: {
         "openai-codex:default": {
@@ -400,6 +400,7 @@ describe("collectCodexRouteWarnings", () => {
         },
       } as OpenClawConfig,
       shouldRepair: true,
+      codexRuntimeReady: true,
     });
 
     expect(mocks.loadInstalledPluginIndex).not.toHaveBeenCalled();
@@ -409,7 +410,7 @@ describe("collectCodexRouteWarnings", () => {
     expect(result.cfg.agents?.defaults?.agentRuntime).toEqual({ id: "codex" });
   });
 
-  it("still repairs to Codex when installed plugin metadata is unavailable", () => {
+  it("repairs to PI when installed plugin metadata lacks the Codex harness", () => {
     const store = {
       profiles: {
         "openai-codex:default": {
@@ -449,6 +450,6 @@ describe("collectCodexRouteWarnings", () => {
     });
 
     expect(result.cfg.agents?.defaults?.model).toBe("openai/gpt-5.5");
-    expect(result.cfg.agents?.defaults?.agentRuntime).toEqual({ id: "codex" });
+    expect(result.cfg.agents?.defaults?.agentRuntime).toEqual({ id: "pi" });
   });
 });

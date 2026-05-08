@@ -29,44 +29,39 @@ export async function cleanupEmbeddedAttemptResources(params: {
   sessionId: string;
   bundleMcpRuntime?: { dispose(): Promise<void> | void };
   bundleLspRuntime?: { dispose(): Promise<void> | void };
-  sessionLock: { release(): Promise<void> | void };
 }): Promise<void> {
   try {
-    try {
-      params.removeToolResultContextGuard?.();
-    } catch {
-      /* best-effort */
-    }
-    try {
-      await params.flushPendingToolResultsAfterIdle({
-        agent: params.session?.agent as IdleAwareAgent | null | undefined,
-        sessionManager: params.sessionManager as ToolResultFlushManager | null | undefined,
-        clearPendingOnTimeout: true,
-      });
-    } catch {
-      /* best-effort */
-    }
-    try {
-      params.session?.dispose();
-    } catch {
-      /* best-effort */
-    }
-    try {
-      params.releaseWsSession(params.sessionId, { allowPool: params.allowWsSessionPool === true });
-    } catch {
-      /* best-effort */
-    }
-    try {
-      await params.bundleMcpRuntime?.dispose();
-    } catch {
-      /* best-effort */
-    }
-    try {
-      await params.bundleLspRuntime?.dispose();
-    } catch {
-      /* best-effort */
-    }
-  } finally {
-    await params.sessionLock.release();
+    params.removeToolResultContextGuard?.();
+  } catch {
+    /* best-effort */
+  }
+  try {
+    await params.flushPendingToolResultsAfterIdle({
+      agent: params.session?.agent as IdleAwareAgent | null | undefined,
+      sessionManager: params.sessionManager as ToolResultFlushManager | null | undefined,
+      clearPendingOnTimeout: true,
+    });
+  } catch {
+    /* best-effort */
+  }
+  try {
+    params.session?.dispose();
+  } catch {
+    /* best-effort */
+  }
+  try {
+    params.releaseWsSession(params.sessionId, { allowPool: params.allowWsSessionPool === true });
+  } catch {
+    /* best-effort */
+  }
+  try {
+    await params.bundleMcpRuntime?.dispose();
+  } catch {
+    /* best-effort */
+  }
+  try {
+    await params.bundleLspRuntime?.dispose();
+  } catch {
+    /* best-effort */
   }
 }

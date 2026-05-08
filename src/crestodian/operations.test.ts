@@ -2,7 +2,9 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resetPluginStateStoreForTests } from "../plugin-state/plugin-state-store.js";
 import type { RuntimeEnv } from "../runtime.js";
+import { listCrestodianAuditEntriesForTests } from "./audit.js";
 import { createCrestodianTestRuntime } from "./crestodian.test-helpers.js";
 import {
   executeCrestodianOperation,
@@ -149,6 +151,12 @@ vi.mock("../config/model-input.js", () => ({
     typeof model === "string" ? model : model?.primary,
 }));
 
+async function readLatestCrestodianAuditEntryForTests() {
+  const entries = await listCrestodianAuditEntriesForTests();
+  expect(entries.length).toBeGreaterThan(0);
+  return entries.at(-1)!.value;
+}
+
 describe("parseCrestodianOperation", () => {
   beforeEach(() => {
     mockConfig.reset();
@@ -157,6 +165,7 @@ describe("parseCrestodianOperation", () => {
 
   afterEach(() => {
     vi.unstubAllEnvs();
+    resetPluginStateStoreForTests();
   });
 
   it("parses typed model writes", () => {
@@ -302,8 +311,7 @@ describe("parseCrestodianOperation", () => {
       cliOptions: {},
     });
     expect(lines.join("\n")).toContain("[crestodian] done: config.set");
-    const auditPath = path.join(tempDir, "audit", "crestodian.jsonl");
-    const audit = JSON.parse((await fs.readFile(auditPath, "utf8")).trim());
+    const audit = await readLatestCrestodianAuditEntryForTests();
     expect(audit).toMatchObject({
       operation: "config.set",
       summary: "Set config gateway.port",
@@ -347,8 +355,7 @@ describe("parseCrestodianOperation", () => {
       },
     });
     expect(lines.join("\n")).toContain("[crestodian] done: config.setRef");
-    const auditPath = path.join(tempDir, "audit", "crestodian.jsonl");
-    const audit = JSON.parse((await fs.readFile(auditPath, "utf8")).trim());
+    const audit = await readLatestCrestodianAuditEntryForTests();
     expect(audit).toMatchObject({
       operation: "config.setRef",
       summary: "Set config gateway.auth.token SecretRef",
@@ -422,8 +429,7 @@ describe("parseCrestodianOperation", () => {
 
     expect(runPluginInstall).toHaveBeenCalledWith("clawhub:openclaw-demo", expect.any(Object));
     expect(lines.join("\n")).toContain("[crestodian] done: plugin.install");
-    const auditPath = path.join(tempDir, "audit", "crestodian.jsonl");
-    const audit = JSON.parse((await fs.readFile(auditPath, "utf8")).trim());
+    const audit = await readLatestCrestodianAuditEntryForTests();
     expect(audit).toMatchObject({
       operation: "plugin.install",
       summary: "Installed plugin clawhub:openclaw-demo",
@@ -463,8 +469,7 @@ describe("parseCrestodianOperation", () => {
 
     expect(runPluginUninstall).toHaveBeenCalledWith("openclaw-demo", expect.any(Object));
     expect(lines.join("\n")).toContain("[crestodian] done: plugin.uninstall");
-    const auditPath = path.join(tempDir, "audit", "crestodian.jsonl");
-    const audit = JSON.parse((await fs.readFile(auditPath, "utf8")).trim());
+    const audit = await readLatestCrestodianAuditEntryForTests();
     expect(audit).toMatchObject({
       operation: "plugin.uninstall",
       summary: "Uninstalled plugin openclaw-demo",
@@ -506,8 +511,7 @@ describe("parseCrestodianOperation", () => {
         },
       },
     });
-    const auditPath = path.join(tempDir, "audit", "crestodian.jsonl");
-    const audit = JSON.parse((await fs.readFile(auditPath, "utf8")).trim());
+    const audit = await readLatestCrestodianAuditEntryForTests();
     expect(audit).toMatchObject({
       operation: "crestodian.setup",
       summary: "Bootstrapped setup with openai/gpt-5.5",
@@ -549,8 +553,7 @@ describe("parseCrestodianOperation", () => {
       yes: true,
     });
     expect(lines.join("\n")).toContain("[crestodian] done: doctor.fix");
-    const auditPath = path.join(tempDir, "audit", "crestodian.jsonl");
-    const audit = JSON.parse((await fs.readFile(auditPath, "utf8")).trim().split("\n").at(-1)!);
+    const audit = await readLatestCrestodianAuditEntryForTests();
     expect(audit).toMatchObject({
       operation: "doctor.fix",
       summary: "Ran doctor repairs",

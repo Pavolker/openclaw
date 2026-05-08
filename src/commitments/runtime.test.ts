@@ -151,7 +151,7 @@ describe("commitment extraction runtime", () => {
     expect(batchItems?.[0]?.itemId).not.toContain("telegram");
     expect(batchItems?.[0]?.itemId).not.toContain("15551234567");
     expect(batchItems?.[0]?.itemId).not.toContain("m1");
-    expect(store.commitments.map((commitment) => commitment.dedupeKey)).toEqual([
+    expect(store.commitments.map((commitment) => commitment.dedupeKey).toSorted()).toEqual([
       "event:1",
       "event:2",
     ]);
