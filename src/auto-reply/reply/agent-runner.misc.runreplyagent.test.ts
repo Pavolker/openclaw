@@ -7,9 +7,13 @@ import {
   abortEmbeddedPiRun,
   isEmbeddedPiRunActive,
 } from "../../agents/pi-embedded-runner/runs.js";
-import * as sessionTypesModule from "../../config/sessions.js";
 import type { SessionEntry } from "../../config/sessions.js";
-import { loadSessionStore, saveSessionStore } from "../../config/sessions.js";
+import {
+  deleteSessionEntry,
+  listSessionEntries,
+  upsertSessionEntry,
+} from "../../config/sessions/store.js";
+import { replaceSqliteSessionTranscriptEvents } from "../../config/sessions/transcript-store.sqlite.js";
 import {
   onInternalDiagnosticEvent,
   resetDiagnosticEventsForTest,
@@ -25,6 +29,66 @@ import type { FollowupRun, QueueSettings } from "./queue.js";
 import { scheduleFollowupDrain } from "./queue.js";
 import { __testing as replyRunRegistryTesting, replyRunRegistry } from "./reply-run-registry.js";
 import { createMockTypingController } from "./test-helpers.js";
+
+const tempStateDirs: string[] = [];
+let previousStateDir: string | undefined;
+let previousStateDirCaptured = false;
+
+async function createTestStateDir(prefix: string): Promise<string> {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
+  tempStateDirs.push(root);
+  if (!previousStateDirCaptured) {
+    previousStateDir = process.env.OPENCLAW_STATE_DIR;
+    previousStateDirCaptured = true;
+  }
+  process.env.OPENCLAW_STATE_DIR = root;
+  return root;
+}
+
+function resolveTestStorePath(root: string, agentId = "main"): string {
+  return path.join(root, "agents", agentId, "sessions", "sessions.json");
+}
+
+function resolveAgentIdFromStorePath(storePath: string): string {
+  const sessionsDir = path.dirname(path.resolve(storePath));
+  if (path.basename(sessionsDir) !== "sessions") {
+    return "main";
+  }
+  return path.basename(path.dirname(sessionsDir)) || "main";
+}
+
+async function replaceTestSessionRows(
+  storePath: string,
+  store: Record<string, SessionEntry>,
+): Promise<void> {
+  const agentId = resolveAgentIdFromStorePath(storePath);
+  for (const { sessionKey } of listSessionEntries({ agentId })) {
+    deleteSessionEntry({ agentId, sessionKey });
+  }
+  for (const [sessionKey, entry] of Object.entries(store)) {
+    upsertSessionEntry({ agentId, sessionKey, entry });
+  }
+}
+
+function readTestSessionRows(storePath: string): Record<string, SessionEntry> {
+  const agentId = resolveAgentIdFromStorePath(storePath);
+  return Object.fromEntries(
+    listSessionEntries({ agentId }).map(({ sessionKey, entry }) => [sessionKey, entry]),
+  );
+}
+
+function seedTestTranscript(
+  transcriptPath: string,
+  events: unknown[] = [],
+  sessionId = "session",
+): void {
+  replaceSqliteSessionTranscriptEvents({
+    agentId: "main",
+    sessionId,
+    transcriptPath,
+    events,
+  });
+}
 
 function createCliBackendTestConfig() {
   return {
@@ -181,12 +245,24 @@ beforeEach(() => {
   );
 });
 
-afterEach(() => {
+afterEach(async () => {
   resetDiagnosticEventsForTest();
   vi.useRealTimers();
   clearMemoryPluginState();
   replyRunRegistryTesting.resetReplyRunRegistry();
   embeddedRunTesting.resetActiveEmbeddedRuns();
+  if (previousStateDirCaptured) {
+    if (previousStateDir === undefined) {
+      delete process.env.OPENCLAW_STATE_DIR;
+    } else {
+      process.env.OPENCLAW_STATE_DIR = previousStateDir;
+    }
+    previousStateDir = undefined;
+    previousStateDirCaptured = false;
+  }
+  await Promise.all(
+    tempStateDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })),
+  );
 });
 
 describe("runReplyAgent auto-compaction token update", () => {
@@ -195,16 +271,12 @@ describe("runReplyAgent auto-compaction token update", () => {
     sessionKey: string;
     entry: Record<string, unknown>;
   }) {
-    await fs.mkdir(path.dirname(params.storePath), { recursive: true });
-    await fs.writeFile(
-      params.storePath,
-      JSON.stringify({ [params.sessionKey]: params.entry }, null, 2),
-      "utf-8",
-    );
+    await replaceTestSessionRows(params.storePath, {
+      [params.sessionKey]: params.entry as SessionEntry,
+    });
   }
 
   function createBaseRun(params: {
-    storePath: string;
     sessionEntry: Record<string, unknown>;
     config?: Record<string, unknown>;
     sessionFile?: string;
@@ -251,8 +323,8 @@ describe("runReplyAgent auto-compaction token update", () => {
     collectDiagnostics?: boolean;
     tmpPrefix: string;
   }) {
-    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), params.tmpPrefix));
-    const storePath = path.join(tmp, "sessions.json");
+    const tmp = await createTestStateDir(params.tmpPrefix);
+    const storePath = resolveTestStorePath(tmp);
     const sessionKey = "main";
     const sessionEntry = {
       sessionId: "session",
@@ -276,7 +348,6 @@ describe("runReplyAgent auto-compaction token update", () => {
         })
       : undefined;
     const { typing, sessionCtx, resolvedQueue, followupRun } = createBaseRun({
-      storePath,
       sessionEntry,
     });
 
@@ -295,7 +366,6 @@ describe("runReplyAgent auto-compaction token update", () => {
         sessionEntry,
         sessionStore: { [sessionKey]: sessionEntry },
         sessionKey,
-        storePath,
         defaultModel: "anthropic/claude-opus-4-6",
         agentCfgContextTokens: 200_000,
         resolvedVerboseLevel: "off",
@@ -309,7 +379,7 @@ describe("runReplyAgent auto-compaction token update", () => {
       unsubscribe?.();
     }
 
-    const stored = JSON.parse(await fs.readFile(storePath, "utf-8"));
+    const stored = readTestSessionRows(storePath);
     const usageEvent = diagnostics.find((event) => event.type === "model.usage");
     return { sessionKey, stored, usageEvent };
   }
@@ -346,7 +416,6 @@ describe("runReplyAgent auto-compaction token update", () => {
     });
 
     const { typing, sessionCtx, resolvedQueue, followupRun } = createBaseRun({
-      storePath: "",
       sessionEntry,
     });
 
@@ -637,8 +706,8 @@ describe("runReplyAgent block streaming", () => {
 
 describe("runReplyAgent Active Memory inline debug", () => {
   it("appends inline Active Memory status payload when verbose is enabled", async () => {
-    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-active-memory-inline-"));
-    const storePath = path.join(tmp, "sessions.json");
+    const tmp = await createTestStateDir("openclaw-active-memory-inline-");
+    const storePath = resolveTestStorePath(tmp);
     const sessionKey = "main";
     const sessionEntry: SessionEntry = {
       sessionId: "session",
@@ -646,20 +715,10 @@ describe("runReplyAgent Active Memory inline debug", () => {
       verboseLevel: "on",
     };
 
-    await fs.writeFile(
-      storePath,
-      JSON.stringify(
-        {
-          [sessionKey]: sessionEntry,
-        },
-        null,
-        2,
-      ),
-      "utf-8",
-    );
+    await replaceTestSessionRows(storePath, { [sessionKey]: sessionEntry });
 
     runEmbeddedPiAgentMock.mockImplementationOnce(async () => {
-      const latest = loadSessionStore(storePath);
+      const latest = readTestSessionRows(storePath);
       latest[sessionKey] = {
         ...latest[sessionKey],
         pluginDebugEntries: [
@@ -672,7 +731,7 @@ describe("runReplyAgent Active Memory inline debug", () => {
           },
         ],
       };
-      await saveSessionStore(storePath, latest);
+      await replaceTestSessionRows(storePath, latest);
       return {
         payloads: [{ text: "Normal reply" }],
         meta: {},
@@ -730,7 +789,6 @@ describe("runReplyAgent Active Memory inline debug", () => {
       sessionEntry,
       sessionStore: { [sessionKey]: sessionEntry },
       sessionKey,
-      storePath,
       defaultModel: "anthropic/claude-opus-4-6",
       resolvedVerboseLevel: "on",
       isNewSession: false,
@@ -748,8 +806,8 @@ describe("runReplyAgent Active Memory inline debug", () => {
   });
 
   it("appends inline Active Memory status and trace payloads when verbose and trace are enabled", async () => {
-    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-active-memory-inline-"));
-    const storePath = path.join(tmp, "sessions.json");
+    const tmp = await createTestStateDir("openclaw-active-memory-inline-");
+    const storePath = resolveTestStorePath(tmp);
     const sessionKey = "main";
     const sessionEntry: SessionEntry = {
       sessionId: "session",
@@ -758,20 +816,10 @@ describe("runReplyAgent Active Memory inline debug", () => {
       traceLevel: "on",
     };
 
-    await fs.writeFile(
-      storePath,
-      JSON.stringify(
-        {
-          [sessionKey]: sessionEntry,
-        },
-        null,
-        2,
-      ),
-      "utf-8",
-    );
+    await replaceTestSessionRows(storePath, { [sessionKey]: sessionEntry });
 
     runEmbeddedPiAgentMock.mockImplementationOnce(async () => {
-      const latest = loadSessionStore(storePath);
+      const latest = readTestSessionRows(storePath);
       latest[sessionKey] = {
         ...latest[sessionKey],
         pluginDebugEntries: [
@@ -784,7 +832,7 @@ describe("runReplyAgent Active Memory inline debug", () => {
           },
         ],
       };
-      await saveSessionStore(storePath, latest);
+      await replaceTestSessionRows(storePath, latest);
       return {
         payloads: [{ text: "Normal reply" }],
         meta: {},
@@ -842,7 +890,6 @@ describe("runReplyAgent Active Memory inline debug", () => {
       sessionEntry,
       sessionStore: { [sessionKey]: sessionEntry },
       sessionKey,
-      storePath,
       defaultModel: "anthropic/claude-opus-4-6",
       resolvedVerboseLevel: "on",
       isNewSession: false,
@@ -860,8 +907,8 @@ describe("runReplyAgent Active Memory inline debug", () => {
   });
 
   it("appends inline Active Memory trace payload when only trace is enabled", async () => {
-    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-active-memory-inline-"));
-    const storePath = path.join(tmp, "sessions.json");
+    const tmp = await createTestStateDir("openclaw-active-memory-inline-");
+    const storePath = resolveTestStorePath(tmp);
     const sessionKey = "main";
     const sessionEntry: SessionEntry = {
       sessionId: "session",
@@ -869,20 +916,10 @@ describe("runReplyAgent Active Memory inline debug", () => {
       traceLevel: "on",
     };
 
-    await fs.writeFile(
-      storePath,
-      JSON.stringify(
-        {
-          [sessionKey]: sessionEntry,
-        },
-        null,
-        2,
-      ),
-      "utf-8",
-    );
+    await replaceTestSessionRows(storePath, { [sessionKey]: sessionEntry });
 
     runEmbeddedPiAgentMock.mockImplementationOnce(async () => {
-      const latest = loadSessionStore(storePath);
+      const latest = readTestSessionRows(storePath);
       latest[sessionKey] = {
         ...latest[sessionKey],
         pluginDebugEntries: [
@@ -895,7 +932,7 @@ describe("runReplyAgent Active Memory inline debug", () => {
           },
         ],
       };
-      await saveSessionStore(storePath, latest);
+      await replaceTestSessionRows(storePath, latest);
       return {
         payloads: [{ text: "Normal reply" }],
         meta: {},
@@ -953,7 +990,6 @@ describe("runReplyAgent Active Memory inline debug", () => {
       sessionEntry,
       sessionStore: { [sessionKey]: sessionEntry },
       sessionKey,
-      storePath,
       defaultModel: "anthropic/claude-opus-4-6",
       resolvedVerboseLevel: "on",
       isNewSession: false,
@@ -971,9 +1007,9 @@ describe("runReplyAgent Active Memory inline debug", () => {
   });
 
   it("appends raw trace payloads when trace raw is enabled", async () => {
-    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-trace-raw-usage-"));
-    const storePath = path.join(tmp, "sessions.json");
-    const sessionFile = path.join(tmp, "session.jsonl");
+    const tmp = await createTestStateDir("openclaw-trace-raw-usage-");
+    const storePath = resolveTestStorePath(tmp);
+    const sessionFile = path.join(path.dirname(storePath), "session.jsonl");
     const sessionKey = "main";
     const sessionEntry: SessionEntry = {
       sessionId: "session",
@@ -982,37 +1018,23 @@ describe("runReplyAgent Active Memory inline debug", () => {
       compactionCount: 3,
     };
 
-    await fs.writeFile(
-      storePath,
-      JSON.stringify(
-        {
-          [sessionKey]: sessionEntry,
+    await replaceTestSessionRows(storePath, { [sessionKey]: sessionEntry });
+    seedTestTranscript(sessionFile, [
+      {
+        message: {
+          role: "user",
+          content: "Earlier turn",
+          usage: { input: 400, output: 20, cacheRead: 100, cacheWrite: 50, total: 570 },
         },
-        null,
-        2,
-      ),
-      "utf-8",
-    );
-    await fs.writeFile(
-      sessionFile,
-      [
-        JSON.stringify({
-          message: {
-            role: "user",
-            content: "Earlier turn",
-            usage: { input: 400, output: 20, cacheRead: 100, cacheWrite: 50, total: 570 },
-          },
-        }),
-        JSON.stringify({
-          message: {
-            role: "assistant",
-            content: "Earlier reply",
-            usage: { input: 200, output: 10, cacheRead: 20, cacheWrite: 5, total: 235 },
-          },
-        }),
-      ].join("\n"),
-      "utf-8",
-    );
+      },
+      {
+        message: {
+          role: "assistant",
+          content: "Earlier reply",
+          usage: { input: 200, output: 10, cacheRead: 20, cacheWrite: 5, total: 235 },
+        },
+      },
+    ]);
 
     runEmbeddedPiAgentMock.mockResolvedValueOnce({
       payloads: [{ text: "Visible reply" }],
@@ -1120,7 +1142,6 @@ describe("runReplyAgent Active Memory inline debug", () => {
       sessionEntry,
       sessionStore: { [sessionKey]: sessionEntry },
       sessionKey,
-      storePath,
       defaultModel: "anthropic/claude-opus-4-6",
       resolvedVerboseLevel: "off",
       isNewSession: false,
@@ -1210,9 +1231,9 @@ describe("runReplyAgent Active Memory inline debug", () => {
   });
 
   it("does not emit persisted trace output to an unauthorized sender", async () => {
-    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-trace-raw-unauthorized-"));
-    const storePath = path.join(tmp, "sessions.json");
-    const sessionFile = path.join(tmp, "session.jsonl");
+    const tmp = await createTestStateDir("openclaw-trace-raw-unauthorized-");
+    const storePath = resolveTestStorePath(tmp);
+    const sessionFile = path.join(path.dirname(storePath), "session.jsonl");
     const sessionKey = "main";
     const sessionEntry: SessionEntry = {
       sessionId: "session",
@@ -1220,8 +1241,8 @@ describe("runReplyAgent Active Memory inline debug", () => {
       traceLevel: "raw",
     };
 
-    await fs.writeFile(storePath, JSON.stringify({ [sessionKey]: sessionEntry }, null, 2), "utf-8");
-    await fs.writeFile(sessionFile, "", "utf-8");
+    await replaceTestSessionRows(storePath, { [sessionKey]: sessionEntry });
+    seedTestTranscript(sessionFile);
 
     runEmbeddedPiAgentMock.mockResolvedValueOnce({
       payloads: [{ text: "Visible reply" }],
@@ -1291,7 +1312,6 @@ describe("runReplyAgent Active Memory inline debug", () => {
       sessionEntry,
       sessionStore: { [sessionKey]: sessionEntry },
       sessionKey,
-      storePath,
       defaultModel: "anthropic/claude-opus-4-6",
       resolvedVerboseLevel: "off",
       isNewSession: false,
@@ -1306,9 +1326,9 @@ describe("runReplyAgent Active Memory inline debug", () => {
   });
 
   it("shows session and last-turn usage totals without per-call usage blocks", async () => {
-    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-trace-raw-usage-"));
-    const storePath = path.join(tmp, "sessions.json");
-    const sessionFile = path.join(tmp, "session.jsonl");
+    const tmp = await createTestStateDir("openclaw-trace-raw-usage-");
+    const storePath = resolveTestStorePath(tmp);
+    const sessionFile = path.join(path.dirname(storePath), "session.jsonl");
     const sessionKey = "main";
     const sessionEntry: SessionEntry = {
       sessionId: "session",
@@ -1316,28 +1336,16 @@ describe("runReplyAgent Active Memory inline debug", () => {
       traceLevel: "raw",
     };
 
-    await fs.writeFile(
-      storePath,
-      JSON.stringify(
-        {
-          [sessionKey]: sessionEntry,
-        },
-        null,
-        2,
-      ),
-      "utf-8",
-    );
-    await fs.writeFile(
-      sessionFile,
-      `${JSON.stringify({
+    await replaceTestSessionRows(storePath, { [sessionKey]: sessionEntry });
+    seedTestTranscript(sessionFile, [
+      {
         message: {
           role: "assistant",
           content: "Earlier reply",
           usage: { input: 20, output: 5, cacheRead: 3, total: 28 },
         },
-      })}\n`,
-      "utf-8",
-    );
+      },
+    ]);
 
     runEmbeddedPiAgentMock.mockResolvedValueOnce({
       payloads: [{ text: "Visible reply" }],
@@ -1407,7 +1415,6 @@ describe("runReplyAgent Active Memory inline debug", () => {
       sessionEntry,
       sessionStore: { [sessionKey]: sessionEntry },
       sessionKey,
-      storePath,
       defaultModel: "anthropic/claude-opus-4-6",
       agentCfgContextTokens: 200_000,
       resolvedVerboseLevel: "off",
@@ -1426,9 +1433,9 @@ describe("runReplyAgent Active Memory inline debug", () => {
   });
 
   it("escapes markdown fence delimiters inside raw trace blocks", async () => {
-    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-trace-raw-fence-"));
-    const storePath = path.join(tmp, "sessions.json");
-    const sessionFile = path.join(tmp, "session.jsonl");
+    const tmp = await createTestStateDir("openclaw-trace-raw-fence-");
+    const storePath = resolveTestStorePath(tmp);
+    const sessionFile = path.join(path.dirname(storePath), "session.jsonl");
     const sessionKey = "main";
     const sessionEntry: SessionEntry = {
       sessionId: "session",
@@ -1436,8 +1443,8 @@ describe("runReplyAgent Active Memory inline debug", () => {
       traceLevel: "raw",
     };
 
-    await fs.writeFile(storePath, JSON.stringify({ [sessionKey]: sessionEntry }, null, 2), "utf-8");
-    await fs.writeFile(sessionFile, "", "utf-8");
+    await replaceTestSessionRows(storePath, { [sessionKey]: sessionEntry });
+    seedTestTranscript(sessionFile);
 
     runEmbeddedPiAgentMock.mockResolvedValueOnce({
       payloads: [{ text: "Visible reply" }],
@@ -1507,7 +1514,6 @@ describe("runReplyAgent Active Memory inline debug", () => {
       sessionEntry,
       sessionStore: { [sessionKey]: sessionEntry },
       sessionKey,
-      storePath,
       defaultModel: "anthropic/claude-opus-4-6",
       resolvedVerboseLevel: "off",
       isNewSession: false,
@@ -1522,28 +1528,17 @@ describe("runReplyAgent Active Memory inline debug", () => {
     expect(traceText).toContain("assistant\n\\~~~\nresponse");
   });
 
-  it("does not reload the session store when verbose is disabled", async () => {
-    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-active-memory-inline-"));
-    const storePath = path.join(tmp, "sessions.json");
+  it("does not append inline debug when verbose is disabled", async () => {
+    const tmp = await createTestStateDir("openclaw-active-memory-inline-");
+    const storePath = resolveTestStorePath(tmp);
     const sessionKey = "main";
     const sessionEntry: SessionEntry = {
       sessionId: "session",
       updatedAt: Date.now(),
     };
 
-    await fs.writeFile(
-      storePath,
-      JSON.stringify(
-        {
-          [sessionKey]: sessionEntry,
-        },
-        null,
-        2,
-      ),
-      "utf-8",
-    );
+    await replaceTestSessionRows(storePath, { [sessionKey]: sessionEntry });
 
-    const loadSessionStoreSpy = vi.spyOn(sessionTypesModule, "loadSessionStore");
     runEmbeddedPiAgentMock.mockResolvedValueOnce({
       payloads: [{ text: "Normal reply" }],
       meta: {},
@@ -1599,7 +1594,6 @@ describe("runReplyAgent Active Memory inline debug", () => {
       sessionEntry,
       sessionStore: { [sessionKey]: sessionEntry },
       sessionKey,
-      storePath,
       defaultModel: "anthropic/claude-opus-4-6",
       resolvedVerboseLevel: "off",
       isNewSession: false,
@@ -1609,7 +1603,6 @@ describe("runReplyAgent Active Memory inline debug", () => {
       typingMode: "instant",
     });
 
-    expect(loadSessionStoreSpy).not.toHaveBeenCalledWith(storePath);
     expect(result).toMatchObject({ text: "Normal reply" });
   });
 });
@@ -1921,7 +1914,6 @@ describe("runReplyAgent messaging tool dedupe", () => {
       typing,
       sessionCtx,
       sessionKey,
-      storePath: opts.storePath,
       defaultModel: "anthropic/claude-opus-4-6",
       resolvedVerboseLevel: "off",
       isNewSession: false,
