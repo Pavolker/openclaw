@@ -147,7 +147,7 @@ test("sessions.compaction.* lists checkpoints and branches or restores from pre-
   expect(branched.payload?.entry.parentSessionKey).toBe("agent:main:main");
   const branchedSessionFile = branched.payload?.entry.sessionFile;
   expect(branchedSessionFile).toBeTruthy();
-  const branchedSession = SessionManager.open(branchedSessionFile!, dir);
+  const branchedSession = SessionManager.open(branchedSessionFile!);
   expect(branchedSession.getEntries()).toHaveLength(
     fixture.preCompactionSession.getEntries().length,
   );
@@ -193,7 +193,7 @@ test("sessions.compaction.* lists checkpoints and branches or restores from pre-
   expect(restored.payload?.entry.compactionCheckpoints).toHaveLength(1);
   const restoredSessionFile = restored.payload?.entry.sessionFile;
   expect(restoredSessionFile).toBeTruthy();
-  const restoredSession = SessionManager.open(restoredSessionFile!, dir);
+  const restoredSession = SessionManager.open(restoredSessionFile!);
   expect(restoredSession.getEntries()).toHaveLength(
     fixture.preCompactionSession.getEntries().length,
   );

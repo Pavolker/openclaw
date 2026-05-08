@@ -71,7 +71,7 @@ function messageText(message: AgentMessage): string {
 describe("hardenManualCompactionBoundary", () => {
   it("turns manual compaction into a true checkpoint for rebuilt context", async () => {
     const dir = await makeTmpDir();
-    const session = SessionManager.create(dir, dir);
+    const session = SessionManager.create(dir);
 
     session.appendMessage({ role: "user", content: "old question", timestamp: 1 });
     session.appendMessage(createAssistantTextMessage("very long old answer", 2));
@@ -124,7 +124,7 @@ describe("hardenManualCompactionBoundary", () => {
 
   it("keeps the upstream recent tail when requested", async () => {
     const dir = await makeTmpDir();
-    const session = SessionManager.create(dir, dir);
+    const session = SessionManager.create(dir);
 
     session.appendMessage({ role: "user", content: "old question", timestamp: 1 });
     session.appendMessage(createAssistantTextMessage("old answer", 2));
@@ -157,7 +157,7 @@ describe("hardenManualCompactionBoundary", () => {
 
   it("is a no-op when the latest leaf is not a compaction entry", async () => {
     const dir = await makeTmpDir();
-    const session = SessionManager.create(dir, dir);
+    const session = SessionManager.create(dir);
     session.appendMessage({ role: "user", content: "hello", timestamp: 1 });
     session.appendMessage(createAssistantTextMessage("hi", 2));
     const sessionFile = session.getSessionFile();
