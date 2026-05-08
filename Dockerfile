@@ -262,26 +262,37 @@ RUN install -d -m 0700 -o node -g node /home/node/.openclaw && \
 # Railway mounts the persistent volume as /data. Make sure the runtime can
 # write the OpenClaw state directory there before dropping privileges.
 # Also copy openclaw.json to the state dir so the gateway finds it.
-RUN cat > /usr/local/bin/openclaw-entrypoint <<'EOF'
+RUN cat > /usr/local/bin/openclaw-entrypoint <<'SCRIPT'
 #!/bin/sh
 set -eu
 
 mkdir -p /data/.openclaw /data/workspace
-if [ -f /app/openclaw.json ]; then
-  echo "[entrypoint] found /app/openclaw.json"
-  cp /app/openclaw.json /data/.openclaw/openclaw.json
-  chown node:node /data/.openclaw/openclaw.json
-else
-  echo "[entrypoint] /app/openclaw.json NOT FOUND"
-fi
-if [ -d /app/docs/reference/templates ]; then
-  echo "[entrypoint] templates dir exists: $(ls /app/docs/reference/templates | head -5)"
-else
-  echo "[entrypoint] templates dir NOT FOUND"
-fi
+
+cat > /data/.openclaw/openclaw.json <<'CONFIG'
+{
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "openrouter/auto",
+        "fallbacks": [
+          "deepseek/deepseek-v4-flash",
+          "openai/gpt-5.5",
+          "anthropic/claude-sonnet-4-20250514"
+        ]
+      }
+    }
+  },
+  "channels": {
+    "telegram": {
+      "allowFrom": ["7553060603"]
+    }
+  }
+}
+CONFIG
+
 chown -R node:node /data /home/node/.openclaw
 exec gosu node "$@"
-EOF
+SCRIPT
 RUN chmod 755 /usr/local/bin/openclaw-entrypoint
 
 ENV NODE_ENV=production
