@@ -77,7 +77,7 @@ async function createHarness(
   params: {
     allowedDecisions?: string[];
     requestPermission?: ReturnType<typeof vi.fn>;
-    resolveApproval?: (requestParams?: Record<string, unknown>) => unknown | Promise<unknown>;
+    resolveApproval?: (requestParams?: Record<string, unknown>) => unknown;
   } = {},
 ): Promise<Harness> {
   let runId: string | undefined;
