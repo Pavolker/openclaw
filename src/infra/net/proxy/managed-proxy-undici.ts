@@ -11,7 +11,7 @@ function hasProxyTlsOptions(options: ManagedEnvHttpProxyAgentOptions | undefined
 export function addActiveManagedProxyTlsOptions(
   options: ManagedEnvHttpProxyAgentOptions | undefined,
 ): ManagedEnvHttpProxyAgentOptions | undefined {
-  if (!options || hasProxyTlsOptions(options)) {
+  if (hasProxyTlsOptions(options)) {
     return options;
   }
   const proxyTls = getActiveManagedProxyTlsOptions();
@@ -19,7 +19,7 @@ export function addActiveManagedProxyTlsOptions(
     return options;
   }
   return {
-    ...options,
+    ...(options ?? {}),
     proxyTls: { ...proxyTls },
   };
 }
