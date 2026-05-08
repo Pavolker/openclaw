@@ -1,27 +1,22 @@
 ---
-summary: "User profile record"
+summary: "User profile"
 title: "USER template"
 read_when:
   - Bootstrapping a workspace manually
 ---
 
-# USER.md - About Your Human
-
-_Learn about the person you're helping. Update this as you go._
+# USER.md - User Profile
 
 - **Name:**
-- **What to call them:**
-- **Pronouns:** _(optional)_
+  _(enter the user's name or group name)_
+- **Preferred address:**
+  _(how the assistant should address the user)_
+- **Pronouns:**
+  _(optional)_
 - **Timezone:**
+  _(workspace or user timezone)_
 - **Notes:**
-
-## Context
-
-_(What do they care about? What projects are they working on? What annoys them? What makes them laugh? Build this over time.)_
-
----
-
-The more you know, the better you can help. But remember — you're learning about a person, not building a dossier. Respect the difference.
+  - Add anything useful about the user, team, preferences, or constraints.
 
 ## Related
 
