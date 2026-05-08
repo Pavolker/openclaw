@@ -152,7 +152,7 @@ describe("nostr outbound cfg threading", () => {
           expect(result.receipt.parts[0]?.kind).toBe("text");
         },
         messageSendingHooks: () => {
-          expect(adapter!.send!.text).toBeTypeOf("function");
+          expect(adapter.send?.text).toBeTypeOf("function");
         },
       },
     });

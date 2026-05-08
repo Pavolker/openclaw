@@ -175,8 +175,7 @@ describe("tsdown config", () => {
     if (typeof external !== "function") {
       throw new Error("expected unified graph external predicate");
     }
-    const externalize = external as TsdownExternalFunction;
-    expect(externalize("qrcode-terminal/lib/main.js", undefined, false)).toBe(true);
+    expect(external("qrcode-terminal/lib/main.js", undefined, false)).toBe(true);
   });
 
   it("suppresses unresolved imports from extension source", () => {
