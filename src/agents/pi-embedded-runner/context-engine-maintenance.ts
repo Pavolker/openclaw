@@ -40,6 +40,7 @@ const DEFERRED_TURN_MAINTENANCE_ABORT_STATE_KEY = Symbol.for(
 );
 type DeferredTurnMaintenanceScheduleParams = {
   contextEngine: ContextEngine;
+  sessionAgentId?: string;
   sessionId: string;
   sessionKey: string;
   sessionFile: string;
@@ -269,6 +270,7 @@ function promoteTurnMaintenanceTaskVisibility(params: {
  * context-engine runtime context payload.
  */
 export function buildContextEngineMaintenanceRuntimeContext(params: {
+  sessionAgentId?: string;
   sessionId: string;
   sessionKey?: string;
   sessionFile: string;
@@ -291,6 +293,7 @@ export function buildContextEngineMaintenanceRuntimeContext(params: {
       const rewriteTranscriptEntriesInFile = async () =>
         await rewriteTranscriptEntriesInSqliteTranscript({
           transcriptPath: params.sessionFile,
+          agentId: params.sessionAgentId,
           sessionId: params.sessionId,
           sessionKey: params.sessionKey,
           config: params.config,
@@ -310,6 +313,7 @@ export function buildContextEngineMaintenanceRuntimeContext(params: {
 
 async function executeContextEngineMaintenance(params: {
   contextEngine: ContextEngine;
+  sessionAgentId?: string;
   sessionId: string;
   sessionKey?: string;
   sessionFile: string;
@@ -327,6 +331,7 @@ async function executeContextEngineMaintenance(params: {
     sessionKey: params.sessionKey,
     sessionFile: params.sessionFile,
     runtimeContext: buildContextEngineMaintenanceRuntimeContext({
+      sessionAgentId: params.sessionAgentId,
       sessionId: params.sessionId,
       sessionKey: params.sessionKey,
       sessionFile: params.sessionFile,
@@ -349,6 +354,7 @@ async function executeContextEngineMaintenance(params: {
 
 async function runDeferredTurnMaintenanceWorker(params: {
   contextEngine: ContextEngine;
+  sessionAgentId?: string;
   sessionId: string;
   sessionKey: string;
   sessionFile: string;
@@ -428,6 +434,7 @@ async function runDeferredTurnMaintenanceWorker(params: {
 
     const result = await executeContextEngineMaintenance({
       contextEngine: params.contextEngine,
+      sessionAgentId: params.sessionAgentId,
       sessionId: params.sessionId,
       sessionKey: params.sessionKey,
       sessionFile: params.sessionFile,
@@ -552,6 +559,7 @@ function scheduleDeferredTurnMaintenance(params: DeferredTurnMaintenanceSchedule
     runPromise = enqueueCommandInLane(resolveDeferredTurnMaintenanceLane(sessionKey), async () =>
       runDeferredTurnMaintenanceWorker({
         contextEngine: params.contextEngine,
+        sessionAgentId: params.sessionAgentId,
         sessionId: params.sessionId,
         sessionKey,
         sessionFile: params.sessionFile,
@@ -607,6 +615,7 @@ function scheduleDeferredTurnMaintenance(params: DeferredTurnMaintenanceSchedule
  */
 export async function runContextEngineMaintenance(params: {
   contextEngine?: ContextEngine;
+  sessionAgentId?: string;
   sessionId: string;
   sessionKey?: string;
   sessionFile: string;
@@ -630,6 +639,7 @@ export async function runContextEngineMaintenance(params: {
     try {
       scheduleDeferredTurnMaintenance({
         contextEngine: params.contextEngine,
+        sessionAgentId: params.sessionAgentId,
         sessionId: params.sessionId,
         sessionKey: params.sessionKey ?? params.sessionId,
         sessionFile: params.sessionFile,
@@ -646,6 +656,7 @@ export async function runContextEngineMaintenance(params: {
   try {
     return await executeContextEngineMaintenance({
       contextEngine: params.contextEngine,
+      sessionAgentId: params.sessionAgentId,
       sessionId: params.sessionId,
       sessionKey: params.sessionKey,
       sessionFile: params.sessionFile,

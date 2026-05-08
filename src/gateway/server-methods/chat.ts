@@ -1015,6 +1015,8 @@ function extractTranscriptUserText(content: unknown): string | undefined {
 
 async function rewriteChatSendUserTurnMediaPaths(params: {
   transcriptPath: string;
+  agentId: string;
+  sessionId: string;
   sessionKey: string;
   message: string;
   savedImages: SavedMedia[];
@@ -1061,6 +1063,8 @@ async function rewriteChatSendUserTurnMediaPaths(params: {
   };
   await rewriteTranscriptEntriesInSqliteTranscript({
     transcriptPath: params.transcriptPath,
+    agentId: params.agentId,
+    sessionId: params.sessionId,
     sessionKey: params.sessionKey,
     config: params.cfg,
     request: {
@@ -2304,6 +2308,8 @@ export const chatHandlers: GatewayRequestHandlers = {
         transcriptMediaRewriteDone = true;
         await rewriteChatSendUserTurnMediaPaths({
           transcriptPath,
+          agentId,
+          sessionId: resolvedSessionId,
           sessionKey,
           message: parsedMessage,
           savedImages: await persistedImagesPromise,

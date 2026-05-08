@@ -230,6 +230,7 @@ export async function compactEmbeddedPiSession(
           }
           await runContextEngineMaintenance({
             contextEngine,
+            sessionAgentId: agentIds.sessionAgentId,
             sessionId: postCompactionSessionId,
             sessionKey: params.sessionKey,
             sessionFile: postCompactionSessionFile,
