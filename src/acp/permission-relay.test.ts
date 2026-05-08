@@ -4,6 +4,7 @@ import {
   buildAcpPermissionRequest,
   normalizeGatewayExecApprovalDecisions,
   parseGatewayExecApprovalEventData,
+  parseGatewayExecApprovalRequestEventPayload,
   resolveGatewayDecisionFromPermissionOutcome,
 } from "./permission-relay.js";
 
@@ -98,6 +99,31 @@ describe("ACP permission relay helpers", () => {
         },
       ],
     });
+  });
+
+  it("parses Gateway exec.approval.requested payloads", () => {
+    expect(
+      parseGatewayExecApprovalRequestEventPayload({
+        id: "approval-raw",
+        request: {
+          command: "echo raw",
+          host: "gateway",
+          sessionKey: "agent:main:main",
+        },
+      }),
+    ).toEqual({
+      approvalId: "approval-raw",
+      command: "echo raw",
+      host: "gateway",
+    });
+
+    expect(parseGatewayExecApprovalRequestEventPayload({ id: "approval-raw" })).toBeNull();
+    expect(
+      parseGatewayExecApprovalRequestEventPayload({
+        id: "approval-raw",
+        request: { command: "" },
+      }),
+    ).toMatchObject({ approvalId: "approval-raw" });
   });
 
   it("maps selected ACP outcomes back to Gateway decisions", () => {

@@ -60,6 +60,7 @@ import { readBool, readNumber, readString } from "./meta.js";
 import {
   buildAcpPermissionRequest,
   parseGatewayExecApprovalEventData,
+  parseGatewayExecApprovalRequestEventPayload,
   resolveGatewayDecisionFromPermissionOutcome,
   type GatewayExecApprovalDecision,
   type GatewayExecApprovalDetails,
@@ -653,6 +654,10 @@ export class AcpGatewayAgent implements Agent {
       await this.handleChatEvent(evt);
       return;
     }
+    if (evt.event === "exec.approval.requested") {
+      this.handleExecApprovalRequestEvent(evt);
+      return;
+    }
     if (evt.event === "agent") {
       await this.handleAgentEvent(evt);
     }
@@ -1207,7 +1212,36 @@ export class AcpGatewayAgent implements Agent {
     if (!approvalEvent) {
       return;
     }
+    this.startApprovalRelay({
+      sessionKey: params.sessionKey,
+      runId: params.runId,
+      approvalEvent,
+    });
+  }
 
+  private handleExecApprovalRequestEvent(evt: EventFrame): void {
+    const payload = evt.payload as Record<string, unknown> | undefined;
+    if (!payload) {
+      return;
+    }
+    const approvalEvent = parseGatewayExecApprovalRequestEventPayload(payload);
+    if (!approvalEvent) {
+      return;
+    }
+    const request = payload.request as Record<string, unknown> | undefined;
+    const sessionKey = normalizeOptionalString(request?.sessionKey);
+    if (!sessionKey) {
+      return;
+    }
+    this.startApprovalRelay({ sessionKey, approvalEvent });
+  }
+
+  private startApprovalRelay(params: {
+    sessionKey: string;
+    runId?: string;
+    approvalEvent: GatewayExecApprovalEvent;
+  }): void {
+    const approvalEvent = params.approvalEvent;
     if (this.approvalRelays.has(approvalEvent.approvalId)) {
       return;
     }

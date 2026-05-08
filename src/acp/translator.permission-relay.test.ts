@@ -51,6 +51,27 @@ function createApprovalEvent(params: {
   } as EventFrame;
 }
 
+function createApprovalRequestEvent(params: {
+  approvalId?: string;
+  sessionKey?: string;
+  command?: string;
+}): EventFrame {
+  return {
+    type: "event",
+    event: "exec.approval.requested",
+    payload: {
+      id: params.approvalId ?? "approval-1",
+      createdAtMs: 1,
+      expiresAtMs: 2,
+      request: {
+        command: params.command ?? "echo raw",
+        host: "gateway",
+        sessionKey: params.sessionKey ?? SESSION_KEY,
+      },
+    },
+  } as EventFrame;
+}
+
 async function createHarness(
   params: {
     allowedDecisions?: string[];
@@ -163,6 +184,41 @@ describe("ACP translator permission relay", () => {
     await vi.waitFor(() => {
       expect(harness.requestPermission).toHaveBeenCalledTimes(1);
       expect(approvalResolveCalls(harness.request)).toHaveLength(1);
+    });
+
+    await cleanupHarness(harness);
+  });
+
+  it("relays exec approval request events before the later agent approval event", async () => {
+    const harness = await createHarness();
+    const approvalId = "approval-raw";
+
+    await harness.agent.handleGatewayEvent(
+      createApprovalRequestEvent({ approvalId, command: "echo raw" }),
+    );
+    await harness.agent.handleGatewayEvent(
+      createApprovalEvent({ runId: harness.runId, approvalId, toolCallId: "tool-late" }),
+    );
+
+    await vi.waitFor(() => {
+      expect(harness.requestPermission).toHaveBeenCalledTimes(1);
+      expect(approvalResolveCalls(harness.request)).toHaveLength(1);
+    });
+
+    expect(harness.requestPermission).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolCall: expect.objectContaining({
+          toolCallId: "exec:approval-raw",
+          rawInput: expect.objectContaining({
+            approvalId,
+            command: "echo hydrated",
+          }),
+        }),
+      }),
+    );
+    expect(harness.request).toHaveBeenCalledWith("exec.approval.resolve", {
+      id: approvalId,
+      decision: "allow-once",
     });
 
     await cleanupHarness(harness);

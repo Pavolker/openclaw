@@ -95,6 +95,23 @@ export function parseGatewayExecApprovalEventData(
   };
 }
 
+export function parseGatewayExecApprovalRequestEventPayload(
+  payload: Record<string, unknown>,
+): GatewayExecApprovalEvent | null {
+  const approvalId = readNonEmptyString(payload.id);
+  const request = payload.request;
+  if (!approvalId || !request || typeof request !== "object" || Array.isArray(request)) {
+    return null;
+  }
+  const requestRecord = request as Record<string, unknown>;
+  return {
+    approvalId,
+    command:
+      readNonEmptyString(requestRecord.command) ?? readNonEmptyString(requestRecord.commandPreview),
+    host: readNonEmptyString(requestRecord.host),
+  };
+}
+
 export function buildAcpPermissionRequest(params: {
   sessionId: string;
   event: GatewayExecApprovalEvent;
